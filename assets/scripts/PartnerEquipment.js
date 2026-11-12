@@ -38,8 +38,10 @@
    stamp=part('Mechanical seal','stamp',elbow,19,17,15.64,7.68,1,.5,1);
   }else{
    const width=anchors.width||84;
-   // Eyes remain a higher-z sibling. The main lid and its large shell open as one piece.
-   helmet=part('Factory coffin helmet','coffinHelmet',anchors.lid,width+17,38,width*.43,33,0);
+   // Preserve the painted proportions and seat the rear brim into the original lid.
+   // Helmet, lid art and eyes are siblings, so child-after-parent rendering cannot hide teeth.
+   const hatWidth=width+12,hatFrame=data.frames.coffinHelmet;
+   helmet=part('Factory coffin helmet','coffinHelmet',anchors.lid,hatWidth,hatWidth*hatFrame.h/hatFrame.w,width*.43,-3,0,.5,0);
    vehicle=group('Coffin rear chassis',owner,0);
    trackRear=part('Rear caterpillar','trackRear',vehicle,43,20,-32,2,0);
    const rearRight=part('Rear caterpillar right','trackRear',vehicle,43,20,23,2,0);
