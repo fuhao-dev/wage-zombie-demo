@@ -16,6 +16,13 @@
    if(work.phase==='dig')work.pose=beat<.42?3:4;
    return work;
   }
+  if(u.kind>=8&&u.kind<=11){
+   const work=miner(u,clock),p=work.progress;
+   // Same timer and early travel as the approved cutouts; one physical contact,
+   // with the king's sound managed by its existing chain event instead of dust.
+   work.strike=work.phase==='dig'&&u.kind!==10&&p>=.61&&p<.68?0:-1;
+   return work;
+  }
   if(!(u.busy>0&&u.duration>0))return {phase:'idle',pose:0,x:u.x,y:u.y,lift:Math.sin(clock*2+u.x)*1.2,angle:Math.sin(clock*.9+u.x)*.7,scaleY:1,strike:-1};
   const p=Math.max(0,Math.min(1,1-u.busy/u.duration));
   let phase,pose,lift=0,angle=0,scaleY=1,strike=-1;
