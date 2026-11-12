@@ -8,11 +8,13 @@
     const Motion=root.WZWhipMotion||require('./WhipMotion');
     const PartnerFX=root.WZPartnerFeedback||require('./PartnerFeedback');
     const ChapterMovie=root.WZChapterTransition||require('./ChapterTransition');
+    const Scroll=root.WZShopScroll||require('./ShopScroll');
     const P=A.P,fmt=Logic.format;
     const Game=cc.Class({
         name:'WageZombieGame',extends:cc.Component,
         onLoad(){
-            this.uiTime=0;this.saveTime=0;this.clock=0;this.tab=0;this.page=0;this.buttons=[];this.modalButtons=[];this.effects=[];this.floaters=[];this.unitNodes={};this.petNodes={};this.oreNodes={};this.pending=null;this.pointerDown=false;this.modalLayer=null;this.normalSnapshot=null;this.soundEnabled=true;this.lastSound=0;this.reactions={};this.whipPulse=0;this.walletPulse=0;this.whipDrag={x:0,y:0};
+            this.uiTime=0;this.saveTime=0;this.clock=0;this.tab=0;this.shopOffsets=[0,0];this.buttons=[];this.modalButtons=[];this.effects=[];this.floaters=[];this.unitNodes={};this.petNodes={};this.oreNodes={};this.pending=null;this.pointerDown=false;this.modalLayer=null;this.normalSnapshot=null;this.soundEnabled=true;this.lastSound=0;this.reactions={};this.whipPulse=0;this.walletPulse=0;this.whipDrag={x:0,y:0};
+            this.shopScroll=new Scroll.ShopScroll();this.shopGesture=false;
             this.chapterView=null;this.chapterAdvancing=false;this.artLoading=false;this.artRequest=0;
             this.whipMotion=new Motion.WhipMotion();this.hitReactions={};this.nextWhoosh=0;
             let saved=null;try{saved=JSON.parse(cc.sys.localStorage.getItem(Data.saveKey)||'null');}catch(e){console.warn('存档读取失败，建立新档',e);}
@@ -20,7 +22,7 @@
             this.soundEnabled=this.model.state.settings.sound!==false;
             this.build();this.attachInput();
             if(!V.ready)this.loadChapterArt(this.model.state.map,()=>{if(this.model.state.pendingChapter&&!this.modalLayer&&!this.chapterView)this.showResult();});
-            this.hideHandler=()=>{this.releaseWhip();this.hiddenAt=Date.now();this.save();};
+            this.hideHandler=()=>{this.cancelShopGesture();this.releaseWhip();this.hiddenAt=Date.now();this.save();};
             this.showHandler=()=>{if(this.hiddenAt&&!this.model.sandbox){this.model.addOffline(Math.max(0,(Date.now()-this.hiddenAt)/1000));this.hiddenAt=0;if(this.model.state.offlineReward>0)this.showOffline();}};
             cc.game.on(cc.game.EVENT_HIDE,this.hideHandler);cc.game.on(cc.game.EVENT_SHOW,this.showHandler);
             if(typeof window!=='undefined'){this.unloadHandler=()=>this.save();window.addEventListener('beforeunload',this.unloadHandler);window.__WZ_DEMO__={game:this,get model(){return this.game.model;},snapshot:()=>this.model.snapshot(),showcase:map=>this.enterShowcase(map),returnToGame:()=>this.returnToGame()};}
@@ -34,6 +36,7 @@
         },
         button(x,y,w,h,fn,options){const b=Object.assign({x,y,w,h,fn},options||{});this.buttons.push(b);return b;},
         build(){
+            this.cancelShopGesture();
             if(this.rootNode)this.rootNode.destroy();
             this.rootNode=new cc.Node('Runtime UI');this.node.addChild(this.rootNode);this.rootNode.setPosition(-540,960);
             this.buttons=[];this.effects=[];this.floaters=[];this.unitNodes={};this.petNodes={};this.oreNodes={};this.cards=[];this.modalLayer=null;this.modalButtons=[];this.boxLabel=null;this.reactions={};this.whipPulse=0;this.walletPulse=0;
@@ -89,7 +92,7 @@
             A.rect(ui,26,1290,1028,610,36,P.panel,P.edge,3);
             V.chrome(ui,map);
             this.label(['墓园招工棚','尸厂改造站','冥界契约所'][map],62,1338,30,P.text,420);
-            this.label('长按卡片查看详情',1016,1339,20,P.muted,420,null,'right');
+            this.label('上下滑动 · 长按查看详情',1016,1339,20,P.muted,460,null,'right');
             this.shopLayer=new cc.Node('Shop');this.rootNode.addChild(this.shopLayer);
             this.drawShop();
             this.modeLabel=this.label('',540,1910,18,P.muted,990,null,'center');
@@ -103,23 +106,26 @@
             n.on(cc.Node.EventType.TOUCH_START,e=>this.touchStart(point(e)));
             n.on(cc.Node.EventType.TOUCH_MOVE,e=>this.touchMove(point(e)));
             n.on(cc.Node.EventType.TOUCH_END,()=>this.touchEnd());
-            n.on(cc.Node.EventType.TOUCH_CANCEL,()=>{this.pending=null;this.releaseWhip();});
-            n.on(cc.Node.EventType.MOUSE_WHEEL,e=>{const p=point(e);if(!this.modalLayer&&p.y>1380){const total=this.shopPages();this.page=clamp(this.page+(e.getScrollY()<0?1:-1),0,total-1);this.drawShop();}});
+            n.on(cc.Node.EventType.TOUCH_CANCEL,()=>{this.pending=null;this.cancelShopGesture();this.releaseWhip();});
+            n.on(cc.Node.EventType.MOUSE_WHEEL,e=>{const p=point(e);if(!this.modalLayer&&!this.artLoading&&!this.chapterView&&this.inShopViewport(p)){this.pending=null;this.shopGesture=false;this.shopScroll.wheel(-e.getScrollY());this.positionShop();}});
             this.input=n;
         },
-        inside(b,p){return p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h;},
+        inside(b,p){if(b.item&&b.shop&&!this.inShopViewport(p))return false;return p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h;},
         touchStart(p){
             if(this.artLoading||(this.chapterView&&this.chapterView.phase!=='result'))return;
             this.unlockAudio();
             if(!this.modalLayer&&this.model.specialBox&&Math.hypot(p.x-this.model.specialBox.x,p.y-(this.model.specialBox.y-40))<50){this.toast('封印尸匣需要激励视频，Demo暂未接入');return;}
+            const settling=!this.modalLayer&&this.inShopViewport(p)?(this.shopGesture=true,this.shopScroll.begin(p,this.clock)):false;
             const list=this.modalLayer?this.modalButtons:this.buttons;
             const b=list.slice().reverse().find(b=>this.inside(b,p));
+            if(settling){this.pending=null;return;}
             if(b){this.pending={button:b,time:0,x:p.x,y:p.y};return;}
             if(!this.modalLayer&&p.x>=44&&p.x<=1036&&p.y>=480&&p.y<1218){
                 this.pointerDown=true;this.whipHeld=true;this.moveCircle(p);this.stepWhip(0);
             }
         },
         touchMove(p){
+            if(this.shopGesture){if(this.shopScroll.move(p,this.clock))this.pending=null;this.positionShop();return;}
             if(this.pending&&Math.hypot(p.x-this.pending.x,p.y-this.pending.y)>30)this.pending=null;
             if(this.whipHeld&&!this.modalLayer){this.moveCircle(p);this.stepWhip(0);}
         },
@@ -130,46 +136,51 @@
             this.whipFrame=this.whipMotion.update(this.circlePoint.x,this.circlePoint.y,dt,held,this.model.radius());
             if(held)this.model.setCursor(this.circlePoint.x,this.circlePoint.y);else this.model.clearWhip();
         },
-        touchEnd(){const p=this.pending;this.pending=null;this.releaseWhip();if(p){p.button.fn();this.sound('click');this.refreshHUD();this.refreshCards();this.handleEvents();this.save();}},
+        touchEnd(){const dragged=this.shopGesture&&this.shopScroll.end(this.clock);this.shopGesture=false;const p=this.pending;this.pending=null;this.releaseWhip();if(p&&!dragged){p.button.fn();this.sound('click');this.refreshHUD();this.refreshCards();this.handleEvents();this.save();}},
+        cancelShopGesture(){this.shopGesture=false;if(this.shopScroll)this.shopScroll.stop();this.pending=null;},
+        inShopViewport(p){const r=this.shopViewport;return !!r&&p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h;},
         shopItems(){return this.model.shop.filter(x=>x.sec===this.tab&&x.effect!=='urgeUpdate');},
-        shopPages(){return Math.max(1,Math.ceil(this.shopItems().length/6));},
         drawShop(){
-            this.shopLayer.removeAllChildren();this.buttons=this.buttons.filter(b=>!b.shop);this.cards=[];
+            this.cancelShopGesture();this.shopLayer.removeAllChildren();this.buttons=this.buttons.filter(b=>!b.shop);this.cards=[];
             const g=this.graphics('Shop chrome',this.shopLayer),t=A.themes[this.model.state.map];
-            for(let i=0;i<2;i++){const x=60+i*494;A.rect(g,x,1370,470,61,16,this.tab===i?t.accent:P.bg,this.tab===i?t.accent:P.edge,2);this.label(i===0?'招募与经营':'赋能与改造',x+235,1400,25,this.tab===i?P.ink:P.muted,450,this.shopLayer,'center');this.button(x,1370,470,61,()=>{this.tab=i;this.page=0;this.drawShop();},{shop:true});}
-            const items=this.shopItems();this.page=clamp(this.page,0,this.shopPages()-1);
-            items.slice(this.page*6,this.page*6+6).forEach((item,i)=>{
-                const x=60+(i%2)*494,y=1450+Math.floor(i/2)*125,w=470,h=112;
-                const card=new cc.Node('Card '+item.id);this.shopLayer.addChild(card);card.setPosition(x,-y);
+            for(let i=0;i<2;i++){const x=60+i*494;A.rect(g,x,1370,470,61,16,this.tab===i?t.accent:P.bg,this.tab===i?t.accent:P.edge,2);this.label(i===0?'招募与经营':'赋能与改造',x+235,1400,25,this.tab===i?P.ink:P.muted,450,this.shopLayer,'center');this.button(x,1370,470,61,()=>{this.shopOffsets[this.tab]=this.shopScroll.offset;this.tab=i;this.drawShop();},{shop:true});}
+            this.shopViewport={x:60,y:1450,w:964,h:430};const r=this.shopViewport,items=this.shopItems(),height=Math.max(0,Math.ceil(items.length/2)*125-13);
+            this.shopScroll.configure(height,r.h,this.shopOffsets[this.tab]||0);
+            const clip=new cc.Node('Shop scroll viewport');this.shopLayer.addChild(clip);clip.setPosition(r.x+r.w/2,-r.y-r.h/2);clip.setContentSize(r.w,r.h);clip.addComponent(cc.Mask).type=cc.Mask.Type.RECT;
+            this.shopContent=new cc.Node('Shop scrolling cards');clip.addChild(this.shopContent);
+            items.forEach((item,i)=>{
+                const x=(i%2)*494,y=Math.floor(i/2)*125,w=470,h=112;
+                const card=new cc.Node('Card '+item.id);this.shopContent.addChild(card);card.setPosition(x,-y);
                 const cg=this.graphics('Card shape',card),ig=this.graphics('Card icon',card);ig.node.setPosition(60,-82);
                 if(item.type===0){if(!V.worker(ig,item.kind,this.model.state.map,false,false,0,true)){A.zombie(ig,item.kind,this.model.state.map,false,false);ig.node.scale=.48;}}
                 else if(item.type===2||item.type===3){const p={type:item.id.includes('zhu')||item.id.includes('taotie')?'zhu':'ji',form:item.type===3?(item.upLvFrom||1)+1:1,enhanced:item.id.startsWith('sun_')};V.partner(ig,p,true);}
                 else A.icon(ig,item.effect==='hitRange'?'whip':item.id.includes('box')?'box':item.id.includes('escape')?'arrow':item.costType===1?'gem':'flask',0,-35,25,item.costType===0?P.gold:t.accent);
                 const title=this.label(item.name,114,28,26,P.text,330,card),desc=this.label('',114,61,19,P.muted,330,card),price=this.label('',114,91,25,P.gold,310,card);
-                this.cards.push({item,g:cg,title,desc,price,x,y,w,h});
-                this.button(x,y,w,h,()=>{const r=this.model.buy(item.id);if(!r.ok)this.toast(r.reason);else this.sound('buy');this.refreshCards();},{shop:true,item});
+                const button=this.button(r.x+x,r.y+y,w,h,()=>{if(this.model.canBuy(item).full){this.toast('达到上线');return;}const result=this.model.buy(item.id);if(!result.ok)this.toast(result.reason);else this.sound('buy');this.refreshCards();},{shop:true,item});
+                this.cards.push({item,node:card,icon:ig.node,g:cg,title,desc,price,x,y,w,h,button});
             });
-            A.line(g,[[64,1830],[1015,1830]],P.edge,2);
-            this.label('‹',102,1860,38,P.text,60,this.shopLayer,'center');this.button(60,1834,100,55,()=>{this.page=Math.max(0,this.page-1);this.drawShop();},{shop:true});
-            this.label((this.page+1)+' / '+this.shopPages(),540,1861,22,P.muted,260,this.shopLayer,'center');
-            this.label('›',978,1860,38,P.text,60,this.shopLayer,'center');this.button(930,1834,100,55,()=>{this.page=Math.min(this.shopPages()-1,this.page+1);this.drawShop();},{shop:true});
-            this.refreshCards();
+            this.shopScrollBar=this.graphics('Shop scroll position',this.shopLayer);this.positionShop();this.refreshCards();
+        },
+        positionShop(){
+            if(!this.shopContent)return;const r=this.shopViewport,s=this.shopScroll;this.shopOffsets[this.tab]=s.offset;this.shopContent.setPosition(-r.w/2,r.h/2+s.offset);
+            this.cards.forEach(c=>{c.button.y=r.y+c.y-s.offset;c.node.active=c.y+c.h>s.offset&&c.y<s.offset+r.h;});
+            const g=this.shopScrollBar;g.clear();if(s.max>0){const h=Math.max(32,r.h*r.h/(r.h+s.max)),top=r.y+(r.h-h)*s.offset/s.max;A.rect(g,1035,r.y,5,r.h,2,P.edge);A.rect(g,1035,top,5,h,2,A.themes[this.model.state.map].accent);}
         },
         refreshCards(){
             const t=A.themes[this.model.state.map];
             this.cards.forEach(c=>{
                 const check=this.model.canBuy(c.item),n=this.model.buyCount(c.item.id),max=this.model.maxCount(c.item),g=c.g;g.clear();
-                A.rect(g,0,0,c.w,c.h,18,check.ok?'#2b4139':P.bg,check.ok?t.accent:P.edge,check.ok?3:2);
-                c.title.node.color=A.color(check.locked?P.muted:P.text);
-                c.desc.string=check.locked?check.reason:(c.item.type===0?'拥有 '+n+' / '+max+' · 单次 '+fmt(this.model.income(c.item.kind)):'等级 '+n+' / '+max);
-                c.price.string=check.full?'已满级':fmt(this.model.cost(c.item))+' '+(c.item.costType===0?'尸币':this.model.chapter.rare);
-                c.price.node.color=A.color(check.full?P.muted:check.ok?t.accent:check.locked?P.muted:P.gold);
+                A.rect(g,0,0,c.w,c.h,18,check.full?'#1c272b':check.ok?'#2b4139':P.bg,check.full?'#354144':check.ok?t.accent:P.edge,check.ok?3:2);
+                c.title.node.color=A.color(check.full?'#72817d':check.locked?P.muted:P.text);c.icon.color=A.color(check.full?'#89908b':'#ffffff');c.icon.opacity=check.full?105:255;
+                c.desc.string=check.locked?check.reason:(c.item.type===0?'拥有 '+n+' / '+max+' · 单次 '+fmt(this.model.income(c.item.kind)):'等级 '+n+' / '+max);c.desc.node.color=A.color(check.full?'#687773':P.muted);
+                c.price.string=check.full?'达到上线':fmt(this.model.cost(c.item))+' '+(c.item.costType===0?'尸币':this.model.chapter.rare);
+                c.price.node.color=A.color(check.full?'#83918b':check.ok?t.accent:check.locked?P.muted:P.gold);
                 if(check.ok)A.circle(g,c.w-19,20,4,t.accent);
             });
         },
         refreshHUD(){
             const m=this.model,s=m.state;this.coinLabel.string=fmt(s.coins);this.rareLabel.string=fmt(s.rare[s.map]);
-            this.modeLabel.string=m.sandbox?'章节展示模式 · 资源与进度不写入正式存档':'DEMO 0.9  /  原值成长 · 本地自动保存';
+            this.modeLabel.string=m.sandbox?'章节展示模式 · 资源与进度不写入正式存档':'DEMO 0.9.1  /  原值成长 · 本地自动保存';
             this.modeLabel.node.color=A.color(m.sandbox?P.gold:P.muted);
             this.fieldStatus.string='尸工 '+m.units.length+'   ·   鞭圈半径 '+Math.round(m.radius()*10)/10+'   ·   已开工 '+fmt(s.hits)+' 次';
             const intro=s.hits<4&&!m.sandbox;
@@ -300,6 +311,7 @@
         update(dt){
             if(!this.model)return;dt=Math.min(dt,.1);this.clock+=dt;
             if(this.pending){this.pending.time+=dt;const b=this.pending.button;if(b.hold&&this.pending.time>=1.5){this.model.grantBuff('frenzy',30);this.toast('伙伴暴走 · 30秒');this.pending=null;this.sound('skill');}else if(b.item&&this.pending.time>=.35){this.pending=null;this.showItem(b.item);}}
+            if(!this.modalLayer&&!this.hiddenAt&&!this.chapterView&&!this.artLoading&&this.shopScroll.step(dt))this.positionShop();
             this.stepWhip(dt);if(!this.modalLayer&&!this.hiddenAt&&!this.chapterView&&!this.artLoading)this.model.tick(dt);if(this.whipFrame.radius!==this.model.radius())this.stepWhip(0);
             if(this.transitionLeft>0&&!this.hiddenAt){this.transitionLeft-=dt;if(this.transitionLabel)this.transitionLabel.string=Math.ceil(this.transitionLeft)+'秒后继续';if(this.transitionLeft<=0)this.continueChapter();}
             this.handleEvents();if(this.chapterView){if(!this.hiddenAt)this.chapterView.update(dt);}else this.updateVisuals(dt);this.uiTime+=dt;this.saveTime+=dt;
@@ -309,7 +321,7 @@
         save(){if(!this.model||this.model.sandbox)return;try{cc.sys.localStorage.setItem(Data.saveKey,JSON.stringify(this.model.export()));}catch(e){console.warn('本地存档不可写',e);}},
         toast(text){this.toastLayer.removeAllChildren();const g=this.graphics('Toast panel',this.toastLayer);A.rect(g,145,1060,790,72,22,P.ink,P.edge,2);this.label(text,540,1095,27,P.text,750,this.toastLayer,'center');this.toastLayer.opacity=255;this.toastLife=2.2;},
         modal(title,subtitle,height){
-            this.releaseWhip();this.closeModal();const n=new cc.Node('Modal');this.rootNode.addChild(n);n.zIndex=1000;this.modalLayer=n;this.modalButtons=[];
+            this.cancelShopGesture();this.releaseWhip();this.closeModal();const n=new cc.Node('Modal');this.rootNode.addChild(n);n.zIndex=1000;this.modalLayer=n;this.modalButtons=[];
             const y=Math.max(250,(1920-height)/2),g=this.graphics('Modal panel',n);
             g.fillColor=A.color('#081519',232);g.rect(-10,-1930,1100,1940);g.fill();A.rect(g,70,y,940,height,36,P.panel,P.edge,3);
             this.label(title,116,y+66,39,P.text,760,n);this.label(subtitle||'',116,y+119,23,P.muted,810,n);
@@ -330,10 +342,10 @@
             this.cancelChapterAnimation();
             if(!this.model.sandbox){this.save();this.normalSnapshot=this.model.export();}
             this.closeModal();this.model=Logic.GameModel.showcase(clamp(map,0,2));this.tab=0;
-            const first=map===1?'moon_staff':map===2?'sun_openbox':'spoon';this.page=Math.max(0,Math.floor(this.model.shop.filter(x=>x.sec===0).findIndex(x=>x.id===first)/6));this.build();this.loadChapterArt(map,()=>this.toast(map===1?'伙伴从左到右：载具 / 作业盔 / 基础':'章节展示 · 可购买、催工、释放技能'));
+            const first=map===1?'moon_staff':map===2?'sun_openbox':'spoon';this.shopOffsets=[Math.max(0,Math.floor(this.shopItems().findIndex(x=>x.id===first)/2)*125),0];this.build();this.loadChapterArt(map,()=>this.toast(map===1?'伙伴从左到右：载具 / 作业盔 / 基础':'章节展示 · 可购买、催工、释放技能'));
         },
         returnToGame(){
-            this.cancelChapterAnimation();this.closeModal();if(this.model.sandbox){const data=this.normalSnapshot;if(data)data.lastSeen=Date.now();this.model=new Logic.GameModel(data);this.normalSnapshot=null;}this.tab=0;this.page=0;this.build();this.loadChapterArt(this.model.state.map,()=>this.toast('已返回正常进度'));
+            this.cancelChapterAnimation();this.closeModal();if(this.model.sandbox){const data=this.normalSnapshot;if(data)data.lastSeen=Date.now();this.model=new Logic.GameModel(data);this.normalSnapshot=null;}this.tab=0;this.shopOffsets=[0,0];this.build();this.loadChapterArt(this.model.state.map,()=>this.toast('已返回正常进度'));
         },
         showChapterInfo(index){
             const c=Logic.CHAPTERS[index],b=this.modal(c.name,'三阶段共享拖鞭催工玩法，主要变化在题材与表现',590);
@@ -371,7 +383,7 @@
         continueChapter(){
             if(this.chapterAdvancing||!this.model.state.pendingChapter)return;this.chapterAdvancing=true;
             const factory=this.model.state.map===0;this.transitionLeft=0;this.closeModal();if(this.chapterView){this.chapterView.destroy();this.chapterView=null;}
-            this.model.advance();this.save();this.tab=0;this.page=0;this.build();
+            this.model.advance();this.save();this.tab=0;this.shopOffsets=[0,0];this.build();
             this.loadChapterArt(this.model.state.map,err=>{if(!factory||err){this.chapterAdvancing=false;return;}
                 this.whip.node.active=false;const view=ChapterMovie.create(this.rootNode,Object.assign({width:1080,height:1920},V.resource('transition')));this.chapterView=view;view.phase='arrive';
                 view.arrive(this.chapterActors(),()=>{if(this.chapterView!==view)return;view.destroy();this.chapterView=null;this.chapterAdvancing=false;this.whip.node.active=true;this.releaseWhip();this.toast('已到岗 · 作业装备请在伙伴栏配置');});

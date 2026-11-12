@@ -55,6 +55,7 @@
   const handRear=part('Rear hand','handRear',...s.hand,7,.5),handFront=part('Front hand','handFront',...s.hand,8,.5);
   const fxNode=new cc.Node('Local machine motion');node.addChild(fxNode);fxNode.zIndex=9;const fx=fxNode.addComponent(cc.Graphics);
   function moveLimb(r,p){r.node.setPosition(p.start.x,p.start.y);r.node.angle=p.ik.a;r.upper.height=p.ik.l1+4;r.joint.setPosition(0,-p.ik.l1);r.joint.angle=p.ik.b-p.ik.a;r.lower.height=p.ik.l2+4;}
+  let bladeTime=null,bladeAngle=0;
   const rig={node,kind,parts,face:null,pose:null,contact:null,update(work,time,rest,hit,tint){
    const p=pose(kind,work,time,rest,hit);this.pose=p;
    torso.setPosition(p.hipX,p.hipY);torso.angle=p.lean;head.angle=p.headAngle;
@@ -71,7 +72,7 @@
    fx.clear();
    if(kind===6&&p.voice>.05){fx.strokeColor=new cc.Color(163,226,214,Math.round(p.voice*170));fx.lineWidth=1.3;for(let i=0;i<2;i++){const r=9+i*8+p.voice*3;fx.ellipse(p.contact.x,p.contact.y+1,r,r*.23);fx.stroke();}}
    if(kind===7&&p.working){fx.strokeColor=new cc.Color(196,213,201,210);fx.lineWidth=4;fx.moveTo(p.toolX,p.toolY-s.tool[1]+3);fx.lineTo(p.headToolX,p.headToolY-7);fx.stroke();}
-   if(this.sawBlade)this.sawBlade.angle=p.headToolAngle;
+   if(this.sawBlade){const dt=bladeTime===null?0:clamp(time-bladeTime,0,.1);bladeTime=time;if(p.working)bladeAngle=(bladeAngle-dt*1100)%360;this.sawBlade.angle=bladeAngle;}
   }};
   // Source art includes the static guard. Mask a circular copy so only its lower blade rotates.
   if(kind===4&&cc.Mask){
