@@ -53,16 +53,10 @@
             this.soundButton=this.button(832,70,78,110,()=>{this.soundEnabled=!this.soundEnabled;this.model.state.settings.sound=this.soundEnabled;this.save();this.rebuildKeepState();});
             A.rect(ui,930,70,100,70,20,P.panel,P.edge,2);A.icon(ui,'flask',980,105,17,t.accent);
             this.label('展示',980,160,17,P.muted,100,null,'center');this.button(930,70,100,110,()=>this.showDemoMenu());
-            // Chapter selector is an information sheet, never a free normal-mode skip.
-            for(let i=0;i<3;i++){
-                const x=44+i*334,active=i===map;
-                A.rect(ui,x,214,320,62,18,active?t.accent:P.panel,active?t.accent:P.edge,2);
-                this.label('0'+(i+1)+'  '+Logic.CHAPTERS[i].name,x+160,246,27,active?P.ink:P.muted,300,null,'center');
-                this.button(x,214,320,62,()=>this.showChapterInfo(i));
-            }
-            A.rect(ui,44,299,992,110,25,P.panel,P.edge,2);
-            A.coin(ui,91,353,26);this.label('尸币',134,329,21,P.muted,250);this.coinLabel=this.label('0',134,369,43,P.gold,470);
-            A.line(ui,[[610,326],[610,385]],P.edge,2);A.gem(ui,662,352,26,t.accent);this.label(this.model.chapter.rare,707,329,21,P.muted,280);this.rareLabel=this.label('0',707,369,37,t.accent,280);
+            // A single wallet replaces the former chapter selector; field coordinates stay stable.
+            A.rect(ui,44,214,992,195,25,P.panel,P.edge,2);
+            A.coin(ui,91,317,26);this.label('尸币',134,267,21,P.muted,250);this.coinLabel=this.label('0',134,329,48,P.gold,470);
+            A.line(ui,[[610,248],[610,375]],P.edge,2);A.gem(ui,662,317,26,t.accent);this.label(this.model.chapter.rare,707,267,21,P.muted,280);this.rareLabel=this.label('0',707,329,42,t.accent,280);
             const chapterTag=this.label('0'+(map+1)+' / '+this.model.chapter.name,102,473,25,t.accent,290);chapterTag.node.zIndex=10;
             const clip=new cc.Node('Playfield clip');this.rootNode.addChild(clip);clip.setPosition(540,-829);clip.setContentSize(988,778);clip.addComponent(cc.Mask).type=cc.Mask.Type.RECT;
             const playScene=new cc.Node('Playfield content');clip.addChild(playScene);playScene.setPosition(-540,829);
@@ -139,9 +133,9 @@
         touchEnd(){const dragged=this.shopGesture&&this.shopScroll.end(this.clock);this.shopGesture=false;const p=this.pending;this.pending=null;this.releaseWhip();if(p&&!dragged){p.button.fn();this.sound('click');this.refreshHUD();this.refreshCards();this.handleEvents();this.save();}},
         cancelShopGesture(){this.shopGesture=false;if(this.shopScroll)this.shopScroll.stop();this.pending=null;},
         inShopViewport(p){const r=this.shopViewport;return !!r&&p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h;},
-        shopItems(){return this.model.shop.filter(x=>x.sec===this.tab&&x.effect!=='urgeUpdate');},
+        shopItems(){return this.model.shop.filter(x=>x.sec===this.tab&&x.effect!=='urgeUpdate'&&!this.model.canBuy(x).locked);},
         drawShop(){
-            this.cancelShopGesture();this.shopLayer.removeAllChildren();this.buttons=this.buttons.filter(b=>!b.shop);this.cards=[];
+            this.cancelShopGesture();this.shopLayer.children.slice().forEach(n=>n.destroy());this.shopLayer.removeAllChildren();this.buttons=this.buttons.filter(b=>!b.shop);this.cards=[];
             const g=this.graphics('Shop chrome',this.shopLayer),t=A.themes[this.model.state.map];
             for(let i=0;i<2;i++){const x=60+i*494;A.rect(g,x,1370,470,61,16,this.tab===i?t.accent:P.bg,this.tab===i?t.accent:P.edge,2);this.label(i===0?'招募与经营':'赋能与改造',x+235,1400,25,this.tab===i?P.ink:P.muted,450,this.shopLayer,'center');this.button(x,1370,470,61,()=>{this.shopOffsets[this.tab]=this.shopScroll.offset;this.tab=i;this.drawShop();},{shop:true});}
             this.shopViewport={x:60,y:1450,w:964,h:430};const r=this.shopViewport,items=this.shopItems(),height=Math.max(0,Math.ceil(items.length/2)*125-13);
@@ -152,7 +146,7 @@
                 const x=(i%2)*494,y=Math.floor(i/2)*125,w=470,h=112;
                 const card=new cc.Node('Card '+item.id);this.shopContent.addChild(card);card.setPosition(x,-y);
                 const cg=this.graphics('Card shape',card),ig=this.graphics('Card icon',card);ig.node.setPosition(60,-82);
-                if(item.type===0){if(!V.worker(ig,item.kind,this.model.state.map,false,false,0,true)){A.zombie(ig,item.kind,this.model.state.map,false,false);ig.node.scale=.48;}}
+                if(item.type===0){ig.node.y=-56;if(!V.worker(ig,item.kind,this.model.state.map,false,false,0,true)){A.zombie(ig,item.kind,this.model.state.map,false,false);ig.node.scale=.48;ig.node.y=-101;}}
                 else if(item.type===2||item.type===3){const p={type:item.id.includes('zhu')||item.id.includes('taotie')?'zhu':'ji',form:item.type===3?(item.upLvFrom||1)+1:1,enhanced:item.id.startsWith('sun_')};V.partner(ig,p,true);}
                 else A.icon(ig,item.effect==='hitRange'?'whip':item.id.includes('box')?'box':item.id.includes('escape')?'arrow':item.costType===1?'gem':'flask',0,-35,25,item.costType===0?P.gold:t.accent);
                 const title=this.label(item.name,114,28,26,P.text,330,card),desc=this.label('',114,61,19,P.muted,330,card),price=this.label('',114,91,25,P.gold,310,card);
@@ -167,6 +161,9 @@
             const g=this.shopScrollBar;g.clear();if(s.max>0){const h=Math.max(32,r.h*r.h/(r.h+s.max)),top=r.y+(r.h-h)*s.offset/s.max;A.rect(g,1035,r.y,5,r.h,2,P.edge);A.rect(g,1035,top,5,h,2,A.themes[this.model.state.map].accent);}
         },
         refreshCards(){
+            // Unlocks can add or remove evolution offers. Rebuild only when membership changes.
+            const items=this.shopItems();
+            if(items.length!==this.cards.length||items.some((item,i)=>this.cards[i].item!==item)){this.drawShop();return;}
             const t=A.themes[this.model.state.map];
             this.cards.forEach(c=>{
                 const check=this.model.canBuy(c.item),n=this.model.buyCount(c.item.id),max=this.model.maxCount(c.item),g=c.g;g.clear();
@@ -180,7 +177,7 @@
         },
         refreshHUD(){
             const m=this.model,s=m.state;this.coinLabel.string=fmt(s.coins);this.rareLabel.string=fmt(s.rare[s.map]);
-            this.modeLabel.string=m.sandbox?'章节展示模式 · 资源与进度不写入正式存档':'DEMO 0.9.1  /  原值成长 · 本地自动保存';
+            this.modeLabel.string=m.sandbox?'章节展示模式 · 资源与进度不写入正式存档':'DEMO 0.10.2  /  原值成长 · 本地自动保存';
             this.modeLabel.node.color=A.color(m.sandbox?P.gold:P.muted);
             this.fieldStatus.string='尸工 '+m.units.length+'   ·   鞭圈半径 '+Math.round(m.radius()*10)/10+'   ·   已开工 '+fmt(s.hits)+' 次';
             const intro=s.hits<4&&!m.sandbox;
@@ -241,7 +238,7 @@
                 record.phase=work.phase;
                 const reaction=this.hitReactions[u.id],age=reaction?this.clock-reaction.time:10,hit=age>=0&&age<.14?Math.exp(-age*27)*reaction.power:0;
                 const rest=record.finishedAt===undefined?0:Math.max(0,1-(this.clock-record.finishedAt)/1.4);
-                const cutout=u.kind<=7,rigWork=cutout&&age<.035?Object.assign({},work,{progress:.055}):work;
+                const cutout=u.kind<=11,rigWork=cutout&&age<.035?Object.assign({},work,{progress:.055}):work;
                 const contact=V.animate(record.g,u.kind,map,golden,rigWork,this.clock,rest,hit);
                 if(work.strike>=0&&record.strike!==work.strike){
                     const x=work.x+(contact?contact.x:24),y=work.y-(contact?contact.y:2);
@@ -295,7 +292,14 @@
                 }
                 else if(e.type==='link'){A.line(g,[[e.x,e.y-70],[e.tx,e.ty-60]],map===0?P.green:map===1?P.cyan:P.fluid,3*(1-p)+1);A.circle(g,e.x+(e.tx-e.x)*p,e.y-70+(e.ty-e.y+10)*p,5,t.accent);}
                 else if(e.type==='shock'||e.type==='skillWave'){A.ring(g,e.x,e.y,e.radius*p,t.accent,4*(1-p)+1);A.ring(g,e.x,e.y,e.radius*p*.78,t.accent,1);}
-                else if(e.type==='laser'){A.line(g,[[120,e.y],[960,e.y]],P.fluid,8*(1-p)+1);A.line(g,[[e.x,520],[e.x,1198]],P.fluid,8*(1-p)+1);}
+                else if(e.type==='laser'){
+                    // Four existing lanes read as cracks in obsidian. The model still owns
+                    // their targets, width, speed and reward; these are only fading marks.
+                    for(const [dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){
+                        const points=[];for(let i=0;i<=8;i++){const d=i*100,j=i===0?0:Math.sin(i*2.3)*8;points.push([e.x+dx*d-dy*j,e.y+dy*d+dx*j]);}
+                        A.line(g,points,'#344e43',11*(1-p)+1);A.line(g,points,P.fluid,4*(1-p)+.8);A.line(g,points,'#d1e4af',1.2*(1-p)+.3);
+                    }
+                }
                 else if(e.type==='transport'){if(e.t<.5){const q=e.t/.5;A.gem(g,e.x+(330-e.x)*q,e.y+(1230-e.y)*q-Math.sin(q*Math.PI)*70,9,t.accent);}else A.gem(g,330+(e.t-.5)*150,1230,9,t.accent);}
                 return true;
             });
@@ -332,16 +336,22 @@
         modalButton(text,x,y,w,h,fn,accent){const g=this.graphics('Modal action',this.modalLayer);A.rect(g,x,y,w,h,18,accent?A.themes[this.model.state.map].accent:P.bg,accent?A.themes[this.model.state.map].accent:P.edge,2);this.label(text,x+w/2,y+h/2,27,accent?P.ink:P.text,w-30,this.modalLayer,'center');this.modalButtons.push({x,y,w,h,fn});},
         showItem(item){const box=this.modal(item.name,'商品详情 · 原数值配置',610),check=this.model.canBuy(item);const text=[item.desc,'当前：'+this.model.buyCount(item.id)+' / '+this.model.maxCount(item),'费用：'+fmt(this.model.cost(item))+' '+(item.costType===0?'尸币':this.model.chapter.rare),check.ok?'现在可以购买':check.reason];text.forEach((s,i)=>this.label(s,121,box.y+192+i*68,i===0?24:27,i===2?P.gold:P.text,820,box.n));this.modalButton(check.ok?'购买一次':'知道了',120,box.y+493,840,74,()=>{this.closeModal();if(check.ok){const r=this.model.buy(item.id);this.handleEvents();this.refreshHUD();this.refreshCards();this.save();if(!r.ok)this.toast(r.reason);}},check.ok);},
         showDemoMenu(){
-            const b=this.modal('Demo 展示台','展示模式独立运行，不影响原值成长存档',850);
+            const b=this.modal('Demo 展示台','展示模式独立运行，不影响原值成长存档',960);
             for(let i=0;i<3;i++)this.modalButton('进入展示 · 0'+(i+1)+' '+Logic.CHAPTERS[i].name,120,b.y+174+i*118,840,92,()=>this.enterShowcase(i),false);
             this.modalButton('观看 · 墓园入厂转场',120,b.y+535,840,78,()=>this.previewFactoryTransition(),false);
-            this.modalButton(this.model.sandbox?'返回我的正常进度':'继续正常游玩',120,b.y+640,840,78,()=>this.model.sandbox?this.returnToGame():this.closeModal(),true);
-            this.label('正常开局：1只腐尸 / 0尸币 · 三章展示可直接体验',540,b.y+782,21,P.muted,820,b.n,'center');
+            this.modalButton('观看 · 尸厂裂隙转场',120,b.y+629,840,78,()=>this.previewInfernalTransition(),false);
+            this.modalButton(this.model.sandbox?'返回我的正常进度':'继续正常游玩',120,b.y+740,840,78,()=>this.model.sandbox?this.returnToGame():this.closeModal(),true);
+            this.label('正常开局：1只腐尸 / 0尸币 · 三章展示可直接体验',540,b.y+887,21,P.muted,820,b.n,'center');
         },
         enterShowcase(map){
             this.cancelChapterAnimation();
             if(!this.model.sandbox){this.save();this.normalSnapshot=this.model.export();}
             this.closeModal();this.model=Logic.GameModel.showcase(clamp(map,0,2));this.tab=0;
+            if(map===2){
+                // All four infernal forms are visible only in the isolated art showcase.
+                this.model.pets=['ji','zhu'].flatMap((type,row)=>[1,2].map((form,i)=>this.model.makePet(type,form,true,380+i*290,1010+row*100)));
+                this.model.fitWalkArea();
+            }
             const first=map===1?'moon_staff':map===2?'sun_openbox':'spoon';this.shopOffsets=[Math.max(0,Math.floor(this.shopItems().findIndex(x=>x.id===first)/2)*125),0];this.build();this.loadChapterArt(map,()=>this.toast(map===1?'伙伴从左到右：载具 / 作业盔 / 基础':'章节展示 · 可购买、催工、释放技能'));
         },
         returnToGame(){
@@ -355,12 +365,12 @@
             this.modalButton('继续经营当前章节',120,b.y+476,840,73,()=>this.closeModal(),true);
         },
         showResult(afterDeparture){
-            if(this.model.state.map===0&&!afterDeparture&&!this.chapterView){this.startFactoryDeparture();return;}
-            const map=this.model.state.map,b=this.modal(map===2?'冥界已封存':map===0?'墓园结算 · 全员转岗':'这一站，经营完成！',this.model.chapter.name+' · 队伍和成长将按原规则继承',620);
+            if(this.model.state.map<2&&!afterDeparture&&!this.chapterView){this.startFactoryDeparture();return;}
+            const map=this.model.state.map,b=this.modal(map===2?'冥界已封存':map===0?'墓园结算 · 全员转岗':'尸厂结算 · 裂隙已开启',this.model.chapter.name+' · 队伍和成长将按原规则继承',620);
             this.label('累计开工 '+fmt(this.model.state.hits)+' 次',540,b.y+215,36,P.gold,820,b.n,'center');
             this.label(map===2?'Demo 的三个世界已全部展示':'下一站：'+Logic.CHAPTERS[map+1].name,540,b.y+285,30,P.text,820,b.n,'center');
             this.transitionLabel=this.label('3秒后继续',540,b.y+357,24,P.muted,820,b.n,'center');
-            this.modalButton(map===2?'继续经营冥界':map===0?'继续 · 墓园入厂':'前往下一世界',120,b.y+453,840,85,()=>this.continueChapter(),true);this.transitionLeft=3;
+            this.modalButton(map===2?'继续经营冥界':map===0?'继续 · 墓园入厂':'继续 · 裂隙入冥界',120,b.y+453,840,85,()=>this.continueChapter(),true);this.transitionLeft=3;
             this.modalButtons[0].fn=()=>this.continueChapter();
         },
         loadChapterArt(map,done){
@@ -373,23 +383,25 @@
         chapterActors(){return Object.values(this.unitNodes).concat(Object.values(this.petNodes)).map(r=>({node:r.g.node}));},
         startFactoryDeparture(){
             if(this.chapterView||this.artLoading)return;this.releaseWhip();this.save();
-            this.loadChapterArt(1,err=>{
-                if(err){this.showResult(true);return;}const art=V.resource('transition');
-                this.model.units.forEach(u=>{const r=this.unitNodes[u.id];if(r)V.animate(r.g,u.kind,0,false,{phase:'finish',progress:.96,pose:5},this.clock,1,0);});
+            const map=this.model.state.map;
+            this.loadChapterArt(map+1,err=>{
+                if(err){this.showResult(true);return;}const art=map===0?V.resource('transition'):{theme:'rift'};
+                this.model.units.forEach(u=>{const r=this.unitNodes[u.id];if(r)V.animate(r.g,u.kind,map,false,{phase:'finish',progress:.96,pose:5},this.clock,1,0);});
                 this.whip.node.active=false;const view=ChapterMovie.create(this.rootNode,Object.assign({width:1080,height:1920},art));this.chapterView=view;view.phase='depart';
                 view.depart(this.chapterActors(),()=>{if(this.chapterView!==view)return;view.phase='result';this.showResult(true);});
             });
         },
         continueChapter(){
             if(this.chapterAdvancing||!this.model.state.pendingChapter)return;this.chapterAdvancing=true;
-            const factory=this.model.state.map===0;this.transitionLeft=0;this.closeModal();if(this.chapterView){this.chapterView.destroy();this.chapterView=null;}
+            const sourceMap=this.model.state.map,factory=sourceMap===0,travelling=sourceMap<2;this.transitionLeft=0;this.closeModal();if(this.chapterView){this.chapterView.destroy();this.chapterView=null;}
             this.model.advance();this.save();this.tab=0;this.shopOffsets=[0,0];this.build();
-            this.loadChapterArt(this.model.state.map,err=>{if(!factory||err){this.chapterAdvancing=false;return;}
-                this.whip.node.active=false;const view=ChapterMovie.create(this.rootNode,Object.assign({width:1080,height:1920},V.resource('transition')));this.chapterView=view;view.phase='arrive';
-                view.arrive(this.chapterActors(),()=>{if(this.chapterView!==view)return;view.destroy();this.chapterView=null;this.chapterAdvancing=false;this.whip.node.active=true;this.releaseWhip();this.toast('已到岗 · 作业装备请在伙伴栏配置');});
+            this.loadChapterArt(this.model.state.map,err=>{if(!travelling||err){this.chapterAdvancing=false;return;}
+                this.whip.node.active=false;const view=ChapterMovie.create(this.rootNode,Object.assign({width:1080,height:1920},factory?V.resource('transition'):{theme:'rift'}));this.chapterView=view;view.phase='arrive';
+                view.arrive(this.chapterActors(),()=>{if(this.chapterView!==view)return;view.destroy();this.chapterView=null;this.chapterAdvancing=false;this.whip.node.active=true;this.releaseWhip();this.toast(factory?'已到岗 · 作业装备请在伙伴栏配置':'冥界已到岗 · 尸匣与新进化按原条件解锁');});
             });
         },
         previewFactoryTransition(){this.enterShowcase(0);this.model.state.pendingChapter=true;this.loadChapterArt(1,()=>this.startFactoryDeparture());},
+        previewInfernalTransition(){this.enterShowcase(1);this.model.state.pendingChapter=true;this.loadChapterArt(2,()=>this.startFactoryDeparture());},
         openBoxes(){
             if(!this.model.buyCount('sun_openbox'))return this.toast('先在商店开启尸匣功能');
             const r=this.model.openBoxes();if(!r.ok)return this.toast(r.reason);

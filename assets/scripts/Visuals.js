@@ -3,13 +3,14 @@
  'use strict';
  const A=root.WZArt||require('./Art'),D=root.WZVisualData||require('./VisualData'),Rig=root.WZMinerRig||require('./MinerRig'),Workers=root.WZWorkerRig||require('./WorkerRig'),P=A.P;
  const Buddies=root.WZBuddyRig||require('./BuddyRig'),Factory=root.WZFactoryWorkerRig||require('./FactoryWorkerRig');
+ const Infernal=root.WZInfernalWorkerRig||require('./InfernalWorkerRig'),InfernalBuddies=root.WZInfernalPartners||require('./InfernalPartners');
  const chapterAtlases=['miner','corpse','screamer','brute','ghost1','ghost2','ghost3','coffin1','coffin2','coffin3'];
  const factoryAtlases=['drill','cutter','broadcast','hydraulic','equipment','transition'];
- const atlasNames=['workers','worlds'].concat(chapterAtlases,factoryAtlases);
+ const atlasNames=['workers','worlds','infernalCostume'].concat(chapterAtlases,factoryAtlases);
  const textures={},frames={},requests={};let activeMap=0,revision=0;
  const lineage=[0,1,2,3,0,0,2,3,0,0,2,3];
- function bundleName(name){return factoryAtlases.includes(name)?'factory':chapterAtlases.includes(name)?'cemetery':'sharedart';}
- function needed(map){return ['workers','worlds'].concat(chapterAtlases,map>0?factoryAtlases:[]);}
+ function bundleName(name){return factoryAtlases.includes(name)||name==='infernalCostume'?'factory':chapterAtlases.includes(name)?'cemetery':'sharedart';}
+ function needed(map){return ['workers','worlds'].concat(chapterAtlases,map>0?factoryAtlases:[],map===2?['infernalCostume']:[]);}
  function load(name,done){
   if(textures[name]){done();return;}if(requests[name]){requests[name].push(done);return;}requests[name]=[done];
   const complete=(err,tex)=>{if(!err){textures[name]=tex;revision++;}else console.warn('美术资源加载失败: '+name,err.message||err);const callbacks=requests[name];delete requests[name];callbacks.forEach(fn=>fn(err));};
@@ -21,8 +22,8 @@
  function partner(g,p,icon){
   const form=p.enhanced?(p.form===2?3:2):p.form,key=(p.type==='ji'?'ghost':'coffin')+form;
   if(!textures[key])return false;
-  const id=key+':'+!!icon+':'+!!textures.equipment;if(g._buddy&&g._buddy.id!==id){g._buddy.node.destroy();g._buddy=null;}
-  if(!g._buddy){g._buddy=Buddies.create(g.node,textures[key],D[key],p.type,form,resource('equipment'));g._buddy.id=id;g._buddy.node.setPosition(0,0);if(icon){g._buddy.update(p,0,0,false,0);g._buddy.node.scale*=p.type==='ji'?.64:.84;g._buddy.node.y=p.type==='ji'?-30:-12;}}
+  const id=key+':'+!!p.enhanced+':'+!!icon+':'+!!textures.equipment;if(g._buddy&&g._buddy.id!==id){g._buddy.node.destroy();g._buddy=null;}
+  if(!g._buddy){g._buddy=p.enhanced?InfernalBuddies.create(g.node,textures[key],D[key],p):Buddies.create(g.node,textures[key],D[key],p.type,form,resource('equipment'));g._buddy.id=id;g._buddy.node.setPosition(0,0);if(icon){g._buddy.update(p,0,0,false,0);g._buddy.node.scale*=p.type==='ji'?.64:.84;g._buddy.node.y=p.type==='ji'?-30:-12;}}
   g.clear();if(!icon)A.ellipse(g,0,2,p.type==='ji'?24:form===3?53:35,6,'#26352e');return true;
  }
  function animatePartner(g,p,time,action,moving,upgrade,focus){return g._buddy?g._buddy.update(p,time,action,moving,upgrade,focus):null;}
@@ -35,15 +36,31 @@
   if(portrait){f.h=Math.floor(f.h*(column===3?.48:.44));f.foot=.5;}
   return frames[key]={data:f,sprite:new cc.SpriteFrame(textures.workers,cc.rect(f.x,f.y,f.w,f.h))};
  }
+ // Fit the idle rig or painted head (including tools and headgear) around the card icon centre.
+ function fitPortrait(rig){
+  const n=rig.node,parent=n.parent;n.scale=1;n.setPosition(0,0);
+  const b=n.getBoundingBoxToWorld(),lo=parent.convertToNodeSpaceAR(cc.v2(b.x,b.y)),hi=parent.convertToNodeSpaceAR(cc.v2(b.x+b.width,b.y+b.height));
+  const scale=Math.min(86/Math.max(1,hi.x-lo.x),90/Math.max(1,hi.y-lo.y));
+  n.scale=scale;n.setPosition(-(lo.x+hi.x)*.5*scale,-(lo.y+hi.y)*.5*scale);
+ }
  function worker(g,kind,map,gold,awake,pose,portrait){
   if(!textures.workers)return false;
+  const infernal=Infernal.specs[kind];
+  if(infernal&&textures[infernal.key]){
+   for(const key of['_worker','_cutout','_miner','_factory'])if(g[key]){g[key].node.destroy();if(g[key].gear)g[key].gear.node.destroy();g[key]=null;}
+   if(g._infernal&&(g._infernal.kind!==kind||g._infernal.awake!==!!awake||g._infernal.costumed!==!!textures.infernalCostume)){g._infernal.node.destroy();g._infernal=null;}
+   if(!g._infernal)g._infernal=Infernal.create(g.node,textures[infernal.key],D[infernal.key],kind,awake,resource('infernalCostume'));
+   if(portrait)fitPortrait(g._infernal);
+   g.clear();if(!portrait)A.ellipse(g,0,2,kind===11?48:32,7,'#26352e');return true;
+  }
+  if(g._infernal){g._infernal.node.destroy();g._infernal=null;}
   const factory=Factory.specs[kind];
   if(factory&&textures[factory.key]){
    if(g._worker){g._worker.node.destroy();g._worker.gear.node.destroy();g._worker=null;}
    if(g._cutout){g._cutout.node.destroy();g._cutout=null;}
    if(g._miner){g._miner.node.destroy();g._miner=null;}
    if(!g._factory)g._factory=Factory.create(g.node,textures[factory.key],D[factory.key],kind);
-   if(portrait){g._factory.node.scale=.57;g._factory.node.y=-43;}
+   if(portrait)fitPortrait(g._factory);
    g.clear();if(!portrait)A.ellipse(g,0,2,kind===7?46:30,7,'#26352e');return true;
   }
   if(g._factory){g._factory.node.destroy();g._factory=null;}
@@ -74,10 +91,12 @@
   r.node.color=A.color(gold?'#d2e4ad':map===1?'#d1e8df':'#d1edcf');
   g.clear();if(!portrait)A.ellipse(g,0,2,column===3?48:31,8,'#26352e');
   r.gear.clear();dress(r.gear,kind,map,portrait,gold,awake);
+  if(portrait)fitPortrait(r);
   return true;
  }
  function animate(g,kind,map,gold,work,clock,rest,hit){
   const tint=A.color(hit>.38?'#e9ffde':gold?'#d2e4ad':map===1?'#d1e8df':'#d1edcf');
+  if(g._infernal){g._infernal.update(work,clock,rest,hit,tint);return g._infernal.contact;}
   if(g._factory){g._factory.update(work,clock,rest,hit,tint);return g._factory.contact;}
   if(kind===1&&g._miner){g._miner.update(work,clock,rest,hit,tint);return g._miner.contact;}
   if(g._cutout){g._cutout.update(work,clock,rest,hit,tint);return g._cutout.contact;}

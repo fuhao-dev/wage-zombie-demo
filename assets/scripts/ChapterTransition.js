@@ -53,7 +53,7 @@
  function line(g,points,hex,width,alpha){g.strokeColor=color(hex,alpha);g.lineWidth=width;g.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)g.lineTo(points[i][0],points[i][1]);g.stroke();}
  function label(parent,text,x,y,size,width){
   const n=add(parent,'Sign '+text);n.setPosition(x,y);n.setContentSize(width,size*1.5);
-  const l=n.addComponent(cc.Label);l.string=text;l.fontFamily='Microsoft YaHei';l.fontSize=size;l.lineHeight=Math.ceil(size*1.3);l.horizontalAlign=cc.Label.HorizontalAlign.CENTER;l.verticalAlign=cc.Label.VerticalAlign.CENTER;l.overflow=cc.Label.Overflow.SHRINK;l.enableWrapText=false;n.color=color('#dbe4bd');return n;
+  const l=n.addComponent(cc.Label);l.string=text;l.fontFamily='Microsoft YaHei';l.fontSize=size;l.lineHeight=Math.ceil(size*1.3);l.horizontalAlign=cc.Label.HorizontalAlign.CENTER;l.verticalAlign=cc.Label.VerticalAlign.CENTER;l.overflow=cc.Label.Overflow.SHRINK;l.enableWrapText=false;n.setContentSize(width,size*1.5);n.color=color('#dbe4bd');return n;
  }
  class TransitionView{
   constructor(parent,options){
@@ -77,6 +77,7 @@
   }
   _clear(){if(valid(this.node))this.node.children.slice().forEach(n=>n.destroy());this.back=null;this.fx=null;this.prop=null;this.props=null;this.actorsLayer=null;}
   _build(){
+   if(this.options.theme==='rift'){this._buildRift();return;}
    const o=this.options;this.back=graphics(this.node,'Quiet chapter cover');this.prop=add(this.node,'Transport prop');this.props={};
    const keys=this.mode==='depart'?['truckOpen','truckClosed']:['hatchOpen','hatchClosed'],data=o.data||{},frames=data.frames||{},cellW=(data.width||1254)/2,cellH=(data.height||1254)/2;
    keys.forEach((key,index)=>{
@@ -88,6 +89,14 @@
    this.notice=label(this.prop,'全员转岗',91,-113,20,180);this.notice.angle=-6;
    this.records.forEach(r=>{if(valid(r.node))r.node.parent=this.actorsLayer;});
   }
+  _buildRift(){
+   this.back=graphics(this.node,'Rift dark cover');this.prop=add(this.node,'Overloaded transfer ring');this.props={};
+   this.rift=graphics(this.prop,'Obsidian gate and soul aperture');
+   this.actorsLayer=add(this.node,'Original team through rift');this.fx=graphics(this.node,'Rift front light');
+   this.sign=label(this.prop,this.mode==='depart'?'设备过载 · 全员转岗':'冥界到岗 · 照常开工',0,210,29,650);
+   this.notice=label(this.prop,this.mode==='depart'?'考勤记录已随队转移':'工资照旧，环境自理',0,-193,23,560);
+   this.records.forEach(r=>{if(valid(r.node))r.node.parent=this.actorsLayer;});
+  }
   _start(mode,actors,onDone){
    if(this.destroyed||this.running||(this.holding&&mode==='depart'))return false;
    if(this.holding)this.cancel();this.mode=mode;this.onDone=onDone||null;this._capture(actors);this._build();
@@ -96,6 +105,7 @@
   depart(actors,onDone){return this._start('depart',actors,onDone);}
   arrive(actors,onDone){return this._start('arrive',actors,onDone);}
   _render(view){
+   if(this.options.theme==='rift'){this._renderRift(view);return;}
    const o=this.options,w=o.width,h=o.height,depart=view.mode==='depart',propScale=depart?w/1080*1.38:w/1080*1.05;
    const center={x:w*(depart?.602:.5),y:-h*(depart?.417:.318)};
    this.prop.scaleX=this.prop.scaleY=propScale;
@@ -136,6 +146,58 @@
      const x=this.prop.x+(i-3)*31*propScale-(depart?70:0),y=depart?center.y-h*.15:center.y-h*.17;
      g.fillColor=color('#9bab8d',power*80);g.ellipse(x,y+Math.sin(i*1.9+view.time*5)*6,15+i*2,7+i);g.fill();
     }
+   }
+  }
+  _renderRift(view){
+   const o=this.options,w=o.width,h=o.height,depart=view.mode==='depart',cx=w*.5,cy=-h*.365;
+   this.prop.setPosition(cx,cy+(1-view.entry)*h*.73+(depart?0:view.leave*h*.15));
+   this.prop.scaleX=this.prop.scaleY=w/1080;this.prop.opacity=Math.round(255*(1-view.leave));
+   this.prop.active=!view.complete;
+   const g=this.rift,rx=184,ry=141,charge=.45+.55*view.entry;g.clear();
+   const oval=(x,y,a,b,c,alpha,stroke,width)=>{g.fillColor=color(c,alpha);g.strokeColor=color(stroke||c,alpha);g.lineWidth=width||2;g.ellipse(x,y,a,b);g.fill();if(stroke)g.stroke();};
+   oval(0,0,rx+29,ry+30,'#263c3d',255,'#182a29',7);
+   oval(0,0,rx+18,ry+18,depart?'#617779':'#727764',255,'#a5af95',3);
+   oval(0,0,rx,ry,'#101f28',255,'#81d4b0',5);
+   oval(-9,1,rx-12,ry-12,'#193735',230,'#415f57',2);
+   for(let i=0;i<12;i++){
+    const a=i*Math.PI/6,x=Math.cos(a)*(rx+23),y=Math.sin(a)*(ry+23),c=depart?'#a3d3cf':'#d7d6ae';
+    line(g,[[x-6,y-5],[x+3,y-7],[x+7,y+4],[x-2,y+7]],c,2.2,200);
+   }
+   for(const sign of[-1,1]){
+    // The stage-two apparatus sheds its straight shell into a bone/rock gate.
+    if(depart){
+     rect(g,sign<0?-245:213,-112,32,224,'#344e54',255);
+     line(g,[[sign*230,-108],[sign*248,-46],[sign*230,0],[sign*248,47],[sign*230,108]],'#90c8c5',3,220);
+     for(let j=0;j<4;j++)rect(g,sign<0?-241:218,-86+j*52,22,14,'#9dca9e',170);
+    }else{
+     line(g,[[sign*225,-119],[sign*235,-43],[sign*225,33],[sign*242,108],[sign*223,160]],'#1e302b',24);
+     line(g,[[sign*225,-119],[sign*235,-43],[sign*225,33],[sign*242,108],[sign*223,160]],'#a1a18b',16);
+     line(g,[[sign*226,-96],[sign*230,-60],[sign*226,-43]],'#dee0b3',3,200);
+    }
+   }
+   for(let i=0;i<4;i++){
+    const a=i*1.57+view.time*.7,r=67+i*14,ps=[];
+    for(let j=0;j<=11;j++){const q=a+j*.09;ps.push([Math.cos(q)*r,Math.sin(q)*r*.72]);}
+    line(g,ps,i%2?'#739fa8':'#93dca8',2,95*charge);
+   }
+   // A torn vertical seam distinguishes the dimensional rift from a hatch.
+   const bend=Math.sin(view.time*8)*4;
+   line(g,[[6,119],[-18,82],[9,54],[-9,23],[12,-5],[-4,-39],[11,-66],[-8,-108]],'#437860',9,130);
+   line(g,[[6,119],[-18,82],[9,54],[-9,23],[12,-5],[-4,-39],[11,-66],[-8,-108]],'#a9e5b6',2.6,170);
+   for(const sign of[-1,1])line(g,[[sign*170,30],[sign*145,46+bend],[sign*119,28],[sign*98,51]],'#93d7bc',1.7,140);
+   this.back.clear();rect(this.back,0,-h,w,h,'#102126',view.cover*255);
+   this.fx.clear();const fx=this.fx;
+   this.records.forEach((r,i)=>{
+    const n=r.node;if(!valid(n))return;const a=view.actors[i],p=smooth(a.progress),spawnY=cy-18;
+    const x=depart?lerp(r.flightX,cx,p):lerp(cx,r.flightX,p),y=depart?lerp(r.flightY,spawnY,p)+Math.sin(p*Math.PI)*h*.026:lerp(spawnY,r.flightY,p)+Math.sin(p*Math.PI)*h*.025+(a.progress>=1?Math.sin(a.land*Math.PI)*3:0);
+    n.setPosition(x,y);n.scaleX=r.flightScaleX*a.scale;n.scaleY=r.flightScaleY*a.scale;n.angle=r.flightAngle+a.tilt;n.opacity=Math.round(r.opacity*a.opacity);n.active=r.active&&a.visible;
+    if(a.progress>0&&a.progress<1&&i%Math.max(1,Math.ceil(this.records.length/16))===0){
+     const alpha=Math.round(Math.sin(p*Math.PI)*150);line(fx,[[x-24,y+28],[x-32,y+45],[x-22,y+61]],'#a3d8c3',2,alpha);
+     line(fx,[[x+24,y+37],[x+29,y+53]],'#d4dbb2',1.6,alpha);
+    }
+   });
+   if(view.phase==='transport'){
+    for(let i=0;i<4;i++){const x=cx+(i-1.5)*72,y=cy-42+Math.sin(view.time*5+i)*12;line(fx,[[x-13,y],[x,y+9],[x+9,y-4]],'#9ad9b8',2,120);}
    }
   }
   update(dt){
