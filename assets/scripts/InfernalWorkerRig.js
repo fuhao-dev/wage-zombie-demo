@@ -1,135 +1,260 @@
-/* Infernal cutouts share the approved painted limbs. Authored, textured costumes
- * attach to the original joints. No production, timing or collision writes. */
-(function(root){
- 'use strict';
- const M=root.WZMinerRig||require('./MinerRig'),rotate=M.rotate,solve=M.solve;
- const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),smooth=v=>{v=clamp(v,0,1);return v*v*(3-2*v);},mix=(a,b,q)=>a+(b-a)*q;
- const specs={
-  8:{key:'corpse',name:'Rift chisel worker',body:[46,56],head:[54,54],headY:51,shoulder:18,shoulderY:43,arm:[34,35],armWidth:[15,10.5],leg:[24,25],legWidth:[17,22],hand:[13,15],hip:9,feet:17,scale:.94},
-  9:{key:'corpse',name:'Bone claw worker',body:[47,55],head:[53,54],headY:50,shoulder:19,shoulderY:42,arm:[34,35],armWidth:[16,12],leg:[24,25],legWidth:[17,22],hand:[14,16],hip:10,feet:20,scale:.94},
-  10:{key:'screamer',name:'Crowned bone horn king',body:[43,63],head:[52,64],headY:57,shoulder:17,shoulderY:47,arm:[32,33],armWidth:[14,10],leg:[26,27],legWidth:[16,21],hand:[13,15],hip:9,feet:18,scale:.94},
-  11:{key:'brute',name:'Obsidian stomp worker',body:[77,68],head:[66,60],headY:61,shoulder:30,shoulderY:49,arm:[43,44],armWidth:[32,25],leg:[28,29],legWidth:[30,35],hand:[24,25],hip:17,feet:27,scale:.94}
- };
- function pose(kind,work,time,rest,hit){
-  const s=specs[kind];if(!s)throw new Error('Unsupported infernal worker '+kind);
-  work=work||{phase:'idle'};time=Number.isFinite(time)?time:0;
-  const p=clamp(work.progress||0,0,1),idle=work.phase==='idle',r=clamp(rest||0,0,1),tired=idle?r:smooth((p-.8)/.14),dig=work.phase==='dig';
-  const load=idle?0:smooth((p-.32)/.11)*(1-smooth((p-.78)/.13)),stroke=dig?smooth((p-.48)/.13):0,recover=dig?smooth((p-.67)/.12):0,press=stroke*(1-recover);
-  const walking=!!work.walking,step=walking?Math.sin(work.step||0):0,breath=Math.sin(time*2.3)*.35;
-  const out={kind,hipX:load*(kind===9?3:1),hipY:(kind===10?50:kind===11?52:45)+breath-tired*2-load*(kind===9?7:2),lean:-5-tired*6-load*(kind===9?10:4)+(hit||0)*3,headAngle:work.phase==='startled'?6:-3-tired*5+load*3,walking,step,working:dig,press,voice:kind===10&&dig?Math.sin(clamp((p-.43)/.37,0,1)*Math.PI):0,face:work.phase==='startled'?'startled':work.phase==='finish'||idle&&r>.1?'tired':work.phase==='start'||dig?'effort':'idle'};
-  const lift=10*(1-load)-tired*2;
-  if(kind===8){
-   out.toolX=34;out.toolY=88+lift-press*10;out.toolAngle=0;
-   out.hands=[{x:28,y:out.toolY-12},{x:40,y:out.toolY-37}];out.contact={x:34,y:out.toolY-78};
-  }else if(kind===9){
-   const rake=stroke*(1-recover),reach=load*(1-recover);
-   out.hands=[{x:mix(-13,24,reach)-rake*12,y:mix(68,35,reach)-rake*17},{x:mix(27,52,reach)-rake*15,y:mix(65,35,reach)-rake*17}];
-   out.toolX=out.hands[1].x;out.toolY=out.hands[1].y;out.toolAngle=0;out.contact={x:out.hands[1].x+4,y:Math.max(0,out.hands[1].y-18)};
-  }else if(kind===10){
-   // Raise the horn to the moving mouth; both hands stay on its solid handle.
-   const mouth=rotate(19,s.headY+20,out.lean);
-   out.toolX=mix(26,out.hipX+mouth.x,load);out.toolY=mix(66-tired*6,out.hipY+mouth.y,load);out.toolAngle=mix(-40,-7,load);
-   out.hands=[[-9,-4],[-3,-20]].map(v=>{const d=rotate(v[0],v[1],out.toolAngle);return{x:out.toolX+d.x,y:out.toolY+d.y};});
-   const tip=rotate(43,5,out.toolAngle);out.contact={x:out.toolX+tip.x,y:out.toolY+tip.y};
-  }else{
-   out.toolX=29;out.toolY=86+lift;out.toolAngle=0;out.hands=[{x:11,y:out.toolY-10},{x:47,y:out.toolY-14}];out.contact={x:26,y:0};
-  }
-  out.arms=[-1,1].map((sign,i)=>{const d=rotate(sign*s.shoulder,s.shoulderY,out.lean),start={x:out.hipX+d.x,y:out.hipY+d.y},end=out.hands[i];return{start,end,ik:solve(start,end,...s.arm,sign)};});
-  out.legs=[-1,1].map(sign=>{const start={x:out.hipX+sign*s.hip,y:out.hipY+3},stomp=kind===11&&sign===1&&dig?(1-smooth((p-.50)/.12))*Math.sin(clamp((p-.43)/.19,0,1)*Math.PI)*15:0,end={x:sign*s.feet-sign*step*12,y:4+(walking?Math.max(0,-sign*step)*8:stomp)};return{start,end,ik:solve(start,end,...s.leg,sign)};});
-  return out;
- }
- const palette={ink:'#1c302f',stone:'#50655a',dark:'#2f433e',edge:'#839380',bone:'#c5c9a2',light:'#e0e1b7',soul:'#8fe2a1',gold:'#c5c18b'};
- function color(hex,a){const n=parseInt(hex.slice(1),16);return new cc.Color(n>>16&255,n>>8&255,n&255,a===undefined?255:a);}
- function poly(g,pts,fill,line,width){g.fillColor=color(fill);g.moveTo(...pts[0]);pts.slice(1).forEach(p=>g.lineTo(...p));g.close();g.fill();if(line){g.strokeColor=color(line);g.lineWidth=width||1.8;g.stroke();}}
- function line(g,pts,c,w,a){g.strokeColor=color(c,a);g.lineWidth=w||1.5;g.moveTo(...pts[0]);pts.slice(1).forEach(p=>g.lineTo(...p));g.stroke();}
- function makeInk(parent,name,z){const n=new cc.Node(name);parent.addChild(n);n.zIndex=z||0;return n.addComponent(cc.Graphics);}
- function armour(g,kind,awake){
-  const c=palette,w=kind===11?35:22;g.clear();
-  poly(g,[[-w,48],[-w-7,37],[-w+3,15],[-12,5],[0,13],[13,6],[w-1,18],[w+7,38],[w,48],[9,40],[-9,40]],c.dark,c.ink,2.2);
-  for(const sign of[-1,1]){
-   poly(g,[[sign*9,38],[sign*(w-1),45],[sign*(w+3),34],[sign*12,29]],c.stone,c.ink,1.7);
-   line(g,[[sign*10,27],[sign*20,31],[sign*19,22],[sign*10,18]],c.bone,2.2);
-   poly(g,[[sign*w,47],[sign*(w+10),60],[sign*(w+18),41],[sign*(w+10),31],[sign*(w-1),34]],c.stone,c.ink,2);
-   line(g,[[sign*(w+8),49],[sign*(w+7),39]],c.edge,1.5);
-  }
-  line(g,[[0,39],[5,31],[-2,23],[3,15]],awake?c.light:c.soul,awake?3:2);
-  if(awake)for(const sign of[-1,1])poly(g,[[sign*(w+2),48],[sign*(w+7),67],[sign*(w+12),47]],c.bone,c.ink,1.5);
- }
- function headdress(g,kind,awake){
-  const c=palette;g.clear();
-  if(kind===10){
-   poly(g,[[-25,48],[-29,69],[-15,60],[0,77],[15,60],[29,69],[25,48]],c.gold,c.ink,2);
-   line(g,[[-22,51],[22,51]],c.light,2);poly(g,[[0,55],[-5,61],[0,67],[5,61]],c.soul,c.ink,1);
-  }else if(kind===9){
-   for(const sign of[-1,1])poly(g,[[sign*17,42],[sign*29,48],[sign*31,34],[sign*25,28],[sign*26,40]],c.bone,c.ink,1.6);
-   line(g,[[-17,43],[-8,47],[2,43],[15,47],[22,42]],c.edge,2.5);
-  }else{
-   for(const sign of[-1,1])poly(g,[[sign*18,42],[sign*24,58],[sign*35,67],[sign*29,48],[sign*23,37]],c.stone,c.ink,2);
-   poly(g,[[-22,47],[-11,56],[0,51],[12,55],[23,46],[12,43],[0,47],[-12,43]],c.bone,c.ink,1.5);
-  }
-  if(awake){line(g,[[-24,55],[-32,63],[-34,76]],c.soul,2);line(g,[[24,55],[32,63],[34,76]],c.soul,2);}
- }
- function toolArt(g,kind){
-  const c=palette;g.clear();
-  if(kind===8){
-   poly(g,[[-4,4],[5,4],[5,-58],[10,-66],[0,-78],[-10,-66],[-4,-58]],c.bone,c.ink,2);
-   for(const y of[-7,-18,-29])line(g,[[-6,y],[6,y-2]],c.dark,2);
-   poly(g,[[-12,-52],[0,-46],[13,-53],[12,-66],[0,-78],[-12,-66]],c.stone,c.ink,2);
-   line(g,[[0,-51],[3,-61],[0,-73]],c.soul,2.2);
-  }else if(kind===10){
-   poly(g,[[-13,7],[-10,-23],[-2,-25],[0,-3],[11,-2],[30,-9],[49,-4],[49,15],[30,22],[12,17]],c.bone,c.ink,2);
-   poly(g,[[27,-6],[39,0],[48,-1],[49,12],[38,13],[29,20]],c.dark,c.ink,1.5);
-   for(const y of[1,7,13])line(g,[[33,y],[46,y+2]],c.bone,2);
-   line(g,[[8,4],[19,9],[23,6]],c.soul,2);
-  }else if(kind===11){
-   poly(g,[[-9,4],[10,4],[9,-45],[20,-54],[23,-78],[10,-86],[-18,-84],[-24,-65],[-20,-52],[-10,-44]],c.stone,c.ink,2.5);
-   line(g,[[0,-49],[6,-60],[-3,-68],[2,-80]],c.soul,2.5);line(g,[[-16,-56],[-18,-71],[-10,-77]],c.edge,2);
-   for(const y of[-5,-15,-25])line(g,[[-11,y],[11,y]],c.bone,2.5);
-  }
- }
- function clawArt(g,heavy){
-  const c=palette;g.clear();const w=heavy?18:11;
-  poly(g,[[-w,9],[w+1,7],[w+6,-5],[w-1,-12],[-w-2,-9],[-w-6,0]],c.stone,c.ink,2);
-  if(!heavy)for(let i=0;i<3;i++){const x=-7+i*7;poly(g,[[x-3,-5],[x+4,-6],[x+6,-18],[x+1,-23],[x,-13]],c.bone,c.ink,1.4);}
-  else line(g,[[-10,4],[-1,-1],[8,2],[12,-6]],c.soul,2);
- }
- function create(parent,texture,data,kind,awake,costume){
-  const s=specs[kind];if(!s)throw new Error('Unsupported infernal worker '+kind);
-  const node=new cc.Node(s.name+' cutout rig');parent.addChild(node);node.scale=s.scale;const parts={},frames={};
-  function frame(key){if(!frames[key]){const r=data.frames[key];frames[key]=new cc.SpriteFrame(texture,cc.rect(r.x,r.y,r.w,r.h));}return frames[key];}
-  function part(name,key,w,h,z,ay,owner){const n=new cc.Node(name);(owner||node).addChild(n);n.zIndex=z;n.anchorY=ay;n.anchorX=.5;n.setContentSize(w,h);const sprite=n.addComponent(cc.Sprite);sprite.sizeMode=cc.Sprite.SizeMode.CUSTOM;sprite.spriteFrame=frame(key);parts[name]={node:n,sprite};return n;}
-  function limb(name,upper,lower,widths,z){const n=new cc.Node(name+' joint');node.addChild(n);n.zIndex=z;const u=part(name+' upper',upper,widths[0],30,0,1,n),joint=new cc.Node(name+' elbow');n.addChild(joint);const l=part(name+' lower',lower,widths[1],30,0,1,joint);return{node:n,upper:u,joint,lower:l};}
-  const lr=limb('Rear leg','thighRear','shinRear',s.legWidth,0),ar=limb('Rear arm','upperRear','foreRear',s.armWidth,1),lf=limb('Front leg','thighFront','shinFront',s.legWidth,2);
-  const body=part('Body','torso',...s.body,3,0),head=part('Head','idle',...s.head,1,0,body);head.setPosition(1,s.headY);
-  const af=limb('Front arm','upperFront','foreFront',s.armWidth,4),tool=makeInk(node,'Infernal occupation tool',5),hr=part('Rear hand','handRear',...s.hand,6,.5),hf=part('Front hand','handFront',...s.hand,7,.5);
-  const plates=makeInk(body,'Bone and obsidian work armour',3),crest=makeInk(head,'Crown or horned bone mask',1),claws=[hr,hf].map(h=>makeInk(h,'Connected gauntlet',1)),fx=makeInk(node,'Local soul work marks',8);
-  const costumeParts=[];
-  function costumePart(owner,key,z){
-   const f=costume&&costume.data.frames[key];if(!f)return null;
-   const n=new cc.Node('Painted '+key);owner.addChild(n);n.zIndex=z||0;n.anchorX=n.anchorY=0;n.setPosition(f.left,f.bottom);n.setContentSize(f.width,f.height);
-   const sprite=n.addComponent(cc.Sprite);sprite.sizeMode=cc.Sprite.SizeMode.CUSTOM;sprite.spriteFrame=new cc.SpriteFrame(costume.texture,cc.rect(f.x,f.y,f.w,f.h));costumeParts.push({node:n,sprite,key});return n;
-  }
-  if(costume){
-   costumePart(plates.node,kind+'_body');costumePart(crest.node,kind+'_head');
-   if(kind!==9)costumePart(tool.node,kind+'_tool');
-   claws.forEach(g=>{if(kind===9||kind===11)costumePart(g.node,kind+(kind===9?'_claw':'_gauntlet'));});
-   if(awake)for(const sign of[-1,1]){const n=costumePart(body,'awake_shard',4),f=costume.data.frames.awake_shard;n.setPosition(sign*((kind===11?38:27)+f.left),43+f.bottom);n.scaleX=sign;}
-  }else{
-   armour(plates,kind,awake);headdress(crest,kind,awake);toolArt(tool,kind);claws.forEach(g=>{if(kind===9||kind===11)clawArt(g,kind===11);});
-  }
-  function moveLimb(r,p){r.node.setPosition(p.start.x,p.start.y);r.node.angle=p.ik.a;r.upper.height=p.ik.l1+4;r.joint.setPosition(0,-p.ik.l1);r.joint.angle=p.ik.b-p.ik.a;r.lower.height=p.ik.l2+4;}
-  const rig={node,parts,costumeParts,costumed:!!costume,kind,awake:!!awake,face:null,contact:null,pose:null,update(work,time,rest,hit,tint){
-   const p=pose(kind,work,time,rest,hit);this.pose=p;body.setPosition(p.hipX,p.hipY);body.angle=p.lean;head.angle=p.headAngle;
-   if(this.face!==p.face){parts.Head.sprite.spriteFrame=frame(p.face);this.face=p.face;}
-   moveLimb(ar,p.arms[0]);moveLimb(af,p.arms[1]);moveLimb(lr,p.legs[0]);moveLimb(lf,p.legs[1]);
-   [hr,hf].forEach((h,i)=>{h.setPosition(p.hands[i].x,p.hands[i].y);h.angle=kind===9?0:p.arms[i].ik.b;});
-   tool.node.setPosition(p.toolX,p.toolY);tool.node.angle=p.toolAngle;tool.node.active=kind!==9;
-   Object.values(parts).forEach(v=>{v.node.color=tint||color('#c6d5be');});this.contact={x:p.contact.x*s.scale,y:p.contact.y*s.scale};
-   fx.clear();if(p.voice>.05){for(let i=0;i<3;i++){const x=p.contact.x+9+i*9;line(fx,[[x,p.contact.y-8-i*3],[x+4,p.contact.y],[x,p.contact.y+8+i*3]],palette.bone,1.5,Math.round(p.voice*180));}}
-   if(this.awake){const power=150+Math.sin(time*3)*30;for(const sign of[-1,1])line(fx,[[sign*31,10],[sign*36,18],[sign*32,26]],palette.soul,1.6,power);}
-   return p;
-  }};
-  rig.update({phase:'idle'},0,0,0);return rig;
- }
- const api={specs,pose,create,palette};if(typeof module!=='undefined')module.exports=api;root.WZInfernalWorkerRig=api;
-})(typeof globalThis!=='undefined'?globalThis:this);
+/* Third-act art rig. Samples the existing work timer without modifying the model. */
+(function (root) {
+    'use strict';
+
+    const { rotate, solve } = root.WZMinerRig || require('./MinerRig');
+    const clamp = (v, min = 0, max = 1) => Math.max(min, Math.min(max, v));
+    const smooth = v => { const q = clamp(v); return q * q * (3 - 2 * q); };
+    const mix = (from, to, amount) => from + (to - from) * amount;
+    const ramp = (p, from, to) => smooth((p - from) / (to - from));
+
+    const specs = {
+        8: { key: 'infernalChisel', name: 'Rift chisel worker', body: [49, 56], head: [53, 64], headX: .49, headY: 49, shoulder: 16, shoulderY: 43, arm: [32, 33], armWidth: [16, 11], leg: [24, 25], legWidth: [17, 24], hand: [14, 17], hip: 10, hipY: 45, feet: 18 },
+        9: { key: 'infernalClaw', name: 'Bone claw worker', body: [51, 55], head: [57, 60], headX: .48, headY: 48, shoulder: 17, shoulderY: 42, arm: [32, 34], armWidth: [16, 12], leg: [24, 25], legWidth: [18, 24], hand: [25, 31], hip: 11, hipY: 44, feet: 19 },
+        10: { key: 'infernalKing', name: 'Crowned horn king', body: [53, 64], head: [50, 69], headX: .47, headY: 56, shoulder: 17, shoulderY: 46, arm: [34, 34], armWidth: [16, 11], leg: [26, 27], legWidth: [17, 23], hand: [14, 16], hip: 10, hipY: 49, feet: 18 },
+        11: { key: 'infernalBrute', name: 'Obsidian stomp worker', body: [79, 69], head: [66, 67], headX: .50, headY: 60, shoulder: 27, shoulderY: 48, arm: [38, 40], armWidth: [32, 25], leg: [28, 29], legWidth: [29, 37], hand: [25, 26], hip: 16, hipY: 50, feet: 26 }
+    };
+    // Coordinates on the painted tools, measured from their sprite anchors.
+    const grips = {
+        8: [[-1, -25, 26], [0, -43, -25]],
+        10: [[14, -11, 43], [14, -25, -7]],
+        11: [[-4, -20, 32], [1, -41, -22]]
+    };
+    const palmAnchor = [.50, .34];
+    const clawAnchor = [.49, .89];
+    const wristAnchor = [.50, .88];
+    const clawTips = [[.41, .04], [.62, .04]];
+    const scale = .94;
+    const palette = { soul: '#a7f0a3', spark: '#d8eab7', mist: '#7da990' };
+
+    function offset(point, x, y, angle) {
+        const d = rotate(x, y, angle);
+        return { x: point.x + d.x, y: point.y + d.y };
+    }
+
+    function pose(kind, work = { phase: 'idle' }, time = 0, rest = 0, hit = 0) {
+        const spec = specs[kind];
+        const p = clamp(work.progress || 0);
+        const idle = work.phase === 'idle';
+        const tired = idle ? clamp(rest) : ramp(p, .79, .98);
+        const flinch = idle ? 0 : ramp(p, 0, .042) * (1 - ramp(p, .049, .13));
+        const plant = idle ? 0 : ramp(p, .32, .47) * (1 - ramp(p, .76, .91));
+        const lower = idle ? 0 : ramp(p, .51, .61);
+        const lift = idle ? 1 : 1 - lower * (1 - ramp(p, .69, .82));
+        const walk = work.walking ? Math.sin(work.step || 0) : 0;
+        const sway = Math.sin(time * 2.4) * .45;
+        const out = {
+            hipX: plant * (kind === 9 ? 6 : 2) - flinch * 4,
+            hipY: spec.hipY + sway + flinch * 2 - tired * 3 - plant * (kind === 9 ? 8 : 2),
+            lean: -5 - tired * 8 - plant * (kind === 9 ? 17 : 5) + flinch * 12 + hit * 4,
+            headAngle: -3 - tired * 7 + flinch * 9 + plant * 4,
+            face: work.phase === 'startled' ? 'startled' : tired > .12 || work.phase === 'finish' ? 'tired'
+                : idle ? 'idle' : 'effort',
+            working: work.phase === 'dig',
+            voice: 0
+        };
+        let tip;
+        if (kind === 8) {
+            // Hold the tip still through contact, then lever it up and out of the seam.
+            const wind = idle ? 0 : ramp(p, .35, .51) * (1 - lower);
+            const pry = idle ? 0 : ramp(p, .645, .73) * (1 - ramp(p, .73, .88));
+            out.toolAngle = 8 * lift - 8 * wind - pry * 16;
+            tip = { x: 37 - 3 * wind + pry * 3, y: (10 - tired * 3 + wind * 28) * lift };
+            const axis = rotate(0, 76, out.toolAngle);
+            out.toolX = tip.x + axis.x;
+            out.toolY = tip.y + axis.y;
+        } else if (kind === 9) {
+            // Reach down in front of the toes, rake back while the talons are planted.
+            const reach = idle ? 0 : ramp(p, .38, .54);
+            const rake = idle ? 0 : ramp(p, .61, .696);
+            const release = idle ? 0 : ramp(p, .69, .86);
+            const touch = lower * (1 - release);
+            const carry = [{ x: -14 + tired * 3, y: 61 - tired * 8 }, { x: 30, y: 60 - tired * 10 }];
+            out.handAngles = [];
+            out.hands = carry.map((hand, i) => {
+                const x = (i ? 64 : 38) - rake * (i ? 23 : 18);
+                const angle = mix(i ? -22 : 24, -6 - rake * 13, reach * (1 - release));
+                out.handAngles.push(angle);
+                const [tipX, tipY] = clawTips[i];
+                const talon = rotate((tipX - clawAnchor[0]) * spec.hand[0], (tipY - clawAnchor[1]) * spec.hand[1], angle);
+                const y = mix(hand.y, mix(47, -talon.y, touch), reach * (1 - release));
+                const wrist = { x: mix(hand.x, x, reach * (1 - release)), y };
+                if (i === 1) tip = { x: wrist.x + talon.x, y: Math.max(0, wrist.y + talon.y) };
+                return wrist;
+            });
+            out.toolX = out.hands[1].x;
+            out.toolY = out.hands[1].y;
+            out.toolAngle = out.handAngles[1];
+        } else if (kind === 10) {
+            const raise = idle ? 0 : ramp(p, .31, .49) * (1 - ramp(p, .75, .89));
+            out.voice = out.working ? ramp(p, .48, .56) * (1 - ramp(p, .71, .79)) : 0;
+            out.headAngle += out.voice * Math.sin(time * 36) * 1.5;
+            const neck = offset({ x: out.hipX, y: out.hipY }, 1, spec.headY, out.lean);
+            const mouth = offset(neck, 16, 21, out.lean + out.headAngle);
+            out.toolX = mix(20, mouth.x, raise);
+            out.toolY = mix(65 - tired * 7, mouth.y, raise);
+            out.toolAngle = mix(-49, -3 + out.voice * Math.sin(time * 38), raise);
+            tip = offset({ x: out.toolX, y: out.toolY }, 58, 5, out.toolAngle);
+        } else {
+            // Weight transfers onto the pillar and rear foot before the front boot lands.
+            const brace = idle ? 0 : ramp(p, .39, .49) * (1 - ramp(p, .72, .88));
+            const stomp = idle ? 0 : ramp(p, .43, .50) * (1 - ramp(p, .53, .61));
+            out.hipX -= brace * 5;
+            out.hipY += stomp * 4 - (1 - lift) * 4;
+            out.lean -= brace * 6;
+            out.toolX = 32;
+            out.toolY = 85 + (1 - brace) * (8 - tired * 5);
+            out.toolAngle = (1 - brace) * -4;
+            out.stomp = stomp;
+            tip = { x: spec.feet + 9, y: 0 };
+        }
+        if (kind !== 9) {
+            out.hands = grips[kind].map(([x, y]) => offset({ x: out.toolX, y: out.toolY }, x, y, out.toolAngle));
+            out.handAngles = grips[kind].map(([, , turn]) => out.toolAngle + turn);
+        }
+        out.contact = tip;
+        out.arms = [-1, 1].map((sign, i) => {
+            const start = offset({ x: out.hipX, y: out.hipY }, sign * spec.shoulder, spec.shoulderY, out.lean);
+            const end = kind === 9 ? out.hands[i] : offset(out.hands[i], (wristAnchor[0] - palmAnchor[0]) * spec.hand[0],
+                (wristAnchor[1] - palmAnchor[1]) * spec.hand[1], out.handAngles[i]);
+            // The rear tool arm folds away from the grip so its elbow clears the front arm.
+            return { start, end, ik: solve(start, end, ...spec.arm, kind === 9 ? sign : 1) };
+        });
+        out.legs = [-1, 1].map(sign => {
+            const start = { x: out.hipX + sign * spec.hip, y: out.hipY + 2 };
+            const end = { x: sign * spec.feet - sign * walk * 10, y: 4 + Math.max(0, -sign * walk) * 8 + (sign > 0 ? (out.stomp || 0) * 18 : 0) };
+            return { start, end, ik: solve(start, end, ...spec.leg, sign) };
+        });
+        return out;
+    }
+
+    function create(parent, texture, data, kind, awake) {
+        const spec = specs[kind];
+        const node = new cc.Node(spec.name);
+        parent.addChild(node);
+        node.scale = scale;
+        const cache = {}, parts = {};
+
+        function frame(key) {
+            if (!cache[key]) {
+                const f = data.frames[key];
+                cache[key] = new cc.SpriteFrame(texture, cc.rect(f.x, f.y, f.w, f.h));
+            }
+            return cache[key];
+        }
+        function part(name, key, size, z, ax, ay, owner = node) {
+            const piece = new cc.Node(name);
+            owner.addChild(piece);
+            piece.setContentSize(...size);
+            piece.zIndex = z;
+            piece.anchorX = ax;
+            piece.anchorY = ay;
+            const sprite = piece.addComponent(cc.Sprite);
+            sprite.sizeMode = cc.Sprite.SizeMode.CUSTOM;
+            sprite.spriteFrame = frame(key);
+            parts[name] = { node: piece, sprite };
+            return piece;
+        }
+        function limb(name, upper, lower, widths, z, boot = false) {
+            const segment = new cc.Node(name + ' joint');
+            node.addChild(segment);
+            segment.zIndex = z;
+            const top = part(name + ' upper', upper, [widths[0], 30], 0, .5, .94, segment);
+            const hinge = new cc.Node(name + ' hinge');
+            segment.addChild(hinge);
+            const bottom = part(name + ' lower', lower, [widths[1], 30], 0, boot ? .37 : .5, .95, hinge);
+            return { segment, top, hinge, bottom };
+        }
+        function moveLimb(limb, { start, ik }) {
+            limb.segment.setPosition(start.x, start.y);
+            limb.segment.angle = ik.a;
+            limb.top.height = ik.l1 + 4;
+            limb.hinge.setPosition(0, -ik.l1);
+            limb.hinge.angle = ik.b - ik.a;
+            limb.bottom.height = ik.l2 + 5;
+        }
+        const legs = [
+            limb('Rear leg', 'thighRear', 'shinRear', spec.legWidth, 0, true),
+            limb('Front leg', 'thighFront', 'shinFront', spec.legWidth, 2, true)
+        ];
+        const arms = [
+            limb('Rear arm', 'upperRear', 'foreRear', spec.armWidth, 1),
+            limb('Front arm', 'upperFront', 'foreFront', spec.armWidth, 5)
+        ];
+        const body = part('Body', 'torso', spec.body, 3, .5, 0);
+        const head = part('Head', 'idle', spec.head, 4, spec.headX, .04, body);
+        head.setPosition(1, spec.headY);
+        if (kind === 9) {
+            part('Spinal guard', 'tool', [24, 26], -1, .68, .5, body).setPosition(-20, 37);
+        }
+        const tool = kind === 9 ? null : kind === 10
+            ? part('Bone horn', 'tool', [64, 53], 6, .04, .63)
+            : part(kind === 8 ? 'Rift chisel' : 'Support pillar', 'tool', kind === 8 ? [26, 78] : [46, 88], 6, .5, .97);
+        const handAnchor = kind === 9 ? clawAnchor : palmAnchor;
+        const hands = [
+            part('Rear hand', 'handRear', spec.hand, kind >= 10 ? 5 : 7, ...handAnchor),
+            part('Front hand', 'handFront', spec.hand, 8, ...handAnchor)
+        ];
+        const marks = new cc.Node('Work and awakening accents');
+        node.addChild(marks);
+        marks.zIndex = 9;
+        const fx = marks.addComponent(cc.Graphics);
+
+        const rig = {
+            node, kind, parts, awake: !!awake, contact: null, pose: null, face: null,
+            update(work, time, rest, hit, tint) {
+                const p = pose(kind, work, time, rest, hit);
+                this.pose = p;
+                body.setPosition(p.hipX, p.hipY);
+                body.angle = p.lean;
+                head.angle = p.headAngle;
+                if (p.face !== this.face) {
+                    parts.Head.sprite.spriteFrame = frame(p.face);
+                    this.face = p.face;
+                }
+                arms.forEach((arm, i) => moveLimb(arm, p.arms[i]));
+                legs.forEach((leg, i) => moveLimb(leg, p.legs[i]));
+                if (tool) {
+                    tool.setPosition(p.toolX, p.toolY);
+                    tool.angle = p.toolAngle;
+                }
+                hands.forEach((hand, i) => {
+                    hand.setPosition(p.hands[i].x, p.hands[i].y);
+                    hand.angle = p.handAngles[i];
+                });
+                if (tint) Object.values(parts).forEach(piece => { piece.node.color = tint; });
+                this.contact = { x: p.contact.x * scale, y: p.contact.y * scale };
+                fx.clear();
+                if (p.voice > .05) {
+                    fx.strokeColor = new cc.Color(201, 226, 167, Math.round(p.voice * 200));
+                    fx.lineWidth = 1.6;
+                    for (let i = 0; i < 3; i++) {
+                        const x = p.contact.x + 8 + i * 8, y = p.contact.y, spread = 8 + i * 3;
+                        fx.moveTo(x, y - spread);
+                        fx.lineTo(x + 4, y);
+                        fx.lineTo(x, y + spread);
+                        fx.stroke();
+                    }
+                }
+                if (awake) {
+                    fx.strokeColor = new cc.Color(167, 240, 163, 154 + Math.round(Math.sin(time * 3) * 30));
+                    fx.lineWidth = 1.5;
+                    for (const side of [-1, 1]) {
+                        const x = side * (kind === 11 ? 46 : 31), y = p.hipY + 20;
+                        fx.moveTo(x, y);
+                        fx.lineTo(x + side * 6, y + 8);
+                        fx.lineTo(x + side * 2, y + 15);
+                        fx.stroke();
+                    }
+                }
+                return p;
+            }
+        };
+        rig.update({ phase: 'idle' }, 0, 0, 0);
+        return rig;
+    }
+
+    const api = { specs, pose, create, palette };
+    if (typeof module !== 'undefined') module.exports = api;
+    root.WZInfernalWorkerRig = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -177,7 +177,7 @@
         },
         refreshHUD(){
             const m=this.model,s=m.state;this.coinLabel.string=fmt(s.coins);this.rareLabel.string=fmt(s.rare[s.map]);
-            this.modeLabel.string=m.sandbox?'章节展示模式 · 资源与进度不写入正式存档':'DEMO 0.10.2  /  原值成长 · 本地自动保存';
+            this.modeLabel.string=m.sandbox?'章节展示模式 · 资源与进度不写入正式存档':'DEMO 0.11.0  /  原值成长 · 本地自动保存';
             this.modeLabel.node.color=A.color(m.sandbox?P.gold:P.muted);
             this.fieldStatus.string='尸工 '+m.units.length+'   ·   鞭圈半径 '+Math.round(m.radius()*10)/10+'   ·   已开工 '+fmt(s.hits)+' 次';
             const intro=s.hits<4&&!m.sandbox;

@@ -1,7 +1,7 @@
 /* Original numeric baseline; new thematic presentation. */
 (function(root,factory){var api=factory();if(typeof module!=='undefined')module.exports=api;root.WZData=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){return {
   "title": "挖个僵尸",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "engine": "2.4.6",
   "saveKey": "wage_zombie_demo_v1",
   "shops": [

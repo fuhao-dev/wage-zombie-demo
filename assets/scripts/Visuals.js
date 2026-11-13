@@ -6,11 +6,16 @@
  const Infernal=root.WZInfernalWorkerRig||require('./InfernalWorkerRig'),InfernalBuddies=root.WZInfernalPartners||require('./InfernalPartners');
  const chapterAtlases=['miner','corpse','screamer','brute','ghost1','ghost2','ghost3','coffin1','coffin2','coffin3'];
  const factoryAtlases=['drill','cutter','broadcast','hydraulic','equipment','transition'];
- const atlasNames=['workers','worlds','infernalCostume'].concat(chapterAtlases,factoryAtlases);
+ const infernalAtlases=Object.values(Infernal.specs).map(spec=>spec.key).concat(['infernalGhost','infernalCoffin']);
+ const atlasNames=['workers','worlds'].concat(chapterAtlases,factoryAtlases,infernalAtlases);
  const textures={},frames={},requests={};let activeMap=0,revision=0;
  const lineage=[0,1,2,3,0,0,2,3,0,0,2,3];
- function bundleName(name){return factoryAtlases.includes(name)||name==='infernalCostume'?'factory':chapterAtlases.includes(name)?'cemetery':'sharedart';}
- function needed(map){return ['workers','worlds'].concat(chapterAtlases,map>0?factoryAtlases:[],map===2?['infernalCostume']:[]);}
+ function bundleName(name){
+  if(infernalAtlases.includes(name))return 'infernal';
+  if(factoryAtlases.includes(name))return 'factory';
+  return chapterAtlases.includes(name)?'cemetery':'sharedart';
+ }
+ function needed(map){return ['workers','worlds'].concat(chapterAtlases,map>0?factoryAtlases:[],map===2?infernalAtlases:[]);}
  function load(name,done){
   if(textures[name]){done();return;}if(requests[name]){requests[name].push(done);return;}requests[name]=[done];
   const complete=(err,tex)=>{if(!err){textures[name]=tex;revision++;}else console.warn('美术资源加载失败: '+name,err.message||err);const callbacks=requests[name];delete requests[name];callbacks.forEach(fn=>fn(err));};
@@ -20,10 +25,25 @@
  function preload(done,map){map=map===undefined?activeMap:map;activeMap=map;const names=needed(map);let left=names.length,failed=null;names.forEach(name=>load(name,err=>{failed=failed||err;if(--left===0&&done)done(failed);}));}
  function resource(name){return textures[name]?{texture:textures[name],data:D[name]}:null;}
  function partner(g,p,icon){
-  const form=p.enhanced?(p.form===2?3:2):p.form,key=(p.type==='ji'?'ghost':'coffin')+form;
+  const form=p.enhanced?(p.form===2?3:2):p.form,normalKey=(p.type==='ji'?'ghost':'coffin')+form;
+  const infernal=p.enhanced&&resource(InfernalBuddies.atlasFor(p.type));
+  const key=infernal?InfernalBuddies.atlasFor(p.type):normalKey;
   if(!textures[key])return false;
-  const id=key+':'+!!p.enhanced+':'+!!icon+':'+!!textures.equipment;if(g._buddy&&g._buddy.id!==id){g._buddy.node.destroy();g._buddy=null;}
-  if(!g._buddy){g._buddy=p.enhanced?InfernalBuddies.create(g.node,textures[key],D[key],p):Buddies.create(g.node,textures[key],D[key],p.type,form,resource('equipment'));g._buddy.id=id;g._buddy.node.setPosition(0,0);if(icon){g._buddy.update(p,0,0,false,0);g._buddy.node.scale*=p.type==='ji'?.64:.84;g._buddy.node.y=p.type==='ji'?-30:-12;}}
+  const id=[key,form,!!p.enhanced,!!icon,!!textures.equipment].join(':');
+  if(g._buddy&&g._buddy.id!==id){g._buddy.node.destroy();g._buddy=null;}
+  if(!g._buddy){
+   g._buddy=infernal?InfernalBuddies.create(g.node,infernal.texture,infernal.data,p)
+    :Buddies.create(g.node,textures[key],D[key],p.type,form,p.enhanced?null:resource('equipment'));
+   g._buddy.id=id;
+   if(icon){
+    g._buddy.update(p,0,0,false,0);
+    if(infernal)fitPortrait(g._buddy);
+    else{
+     g._buddy.node.scale*=p.type==='ji'?.64:.84;
+     g._buddy.node.y=p.type==='ji'?-30:-12;
+    }
+   }
+  }
   g.clear();if(!icon)A.ellipse(g,0,2,p.type==='ji'?24:form===3?53:35,6,'#26352e');return true;
  }
  function animatePartner(g,p,time,action,moving,upgrade,focus){return g._buddy?g._buddy.update(p,time,action,moving,upgrade,focus):null;}
@@ -48,8 +68,8 @@
   const infernal=Infernal.specs[kind];
   if(infernal&&textures[infernal.key]){
    for(const key of['_worker','_cutout','_miner','_factory'])if(g[key]){g[key].node.destroy();if(g[key].gear)g[key].gear.node.destroy();g[key]=null;}
-   if(g._infernal&&(g._infernal.kind!==kind||g._infernal.awake!==!!awake||g._infernal.costumed!==!!textures.infernalCostume)){g._infernal.node.destroy();g._infernal=null;}
-   if(!g._infernal)g._infernal=Infernal.create(g.node,textures[infernal.key],D[infernal.key],kind,awake,resource('infernalCostume'));
+   if(g._infernal&&(g._infernal.kind!==kind||g._infernal.awake!==!!awake)){g._infernal.node.destroy();g._infernal=null;}
+   if(!g._infernal)g._infernal=Infernal.create(g.node,textures[infernal.key],D[infernal.key],kind,awake);
    if(portrait)fitPortrait(g._infernal);
    g.clear();if(!portrait)A.ellipse(g,0,2,kind===11?48:32,7,'#26352e');return true;
   }
