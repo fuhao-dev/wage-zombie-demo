@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#101c22">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23c4e78b'/%3E%3Cpath d='M20 44 Q8 12 39 27 T43 14' fill='none' stroke='%23101c22' stroke-width='4'/%3E%3C/svg%3E">
+  <title>植物大师vs精英僵尸</title>
+  <meta name="game-build" content="071d147a267891f5600b5b14507a451f7bc8864a">
+  <meta name="robots" content="noindex, nofollow">
+  <style>
+    :root{--wz-safe-top:env(safe-area-inset-top,0px);--wz-safe-bottom:env(safe-area-inset-bottom,0px)}
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0b1419;color:#dce8cd;font-family:"Microsoft YaHei",sans-serif}
+    body{display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 36%,#1f3832 0%,#0b1419 65%)}
+    #stage{position:relative;width:min(100vw,56.25vh);height:100vh;height:100dvh;box-shadow:0 0 0 1px #31443e,0 24px 100px #050b0b;border-radius:10px;overflow:hidden}
+    #GameCanvas{display:block;width:100%;height:100%;outline:none;touch-action:none}
+    #loading{position:absolute;inset:0;display:grid;place-items:center;padding-block:var(--wz-safe-top) var(--wz-safe-bottom);background:#f1efe4;color:#33352e;z-index:4;container-type:inline-size}
+    .launch-copy{position:relative;width:100%;height:100%;max-height:177.78cqw;text-align:center}
+    .launch-age{position:absolute;top:.42%;left:3.7%;width:12.04cqw;height:auto}
+    #loading h1,#loading h2,#loading p{margin:0;font-weight:400}
+    #loading h1{position:absolute;top:calc(.42% + 16.1cqw);bottom:82.45%;inset-inline:4%;display:grid;place-items:center;font-size:7.22cqw;color:#507755}
+    #launch-logo{width:100%;height:100%;min-height:0;object-fit:contain}
+    .launch-warning{position:absolute;top:17.8%;height:40.1%;inset-inline:2.96%;border:1px solid #e3dfcf;border-radius:4.8cqw;background:#fbfaf4}
+    #loading h2{position:absolute;top:14.5%;width:100%;transform:translateY(-50%);font-size:3.7cqw;letter-spacing:.2em;color:#706858}
+    #launch-lines{position:absolute;top:28%;width:100%;display:grid;gap:3.9cqw;font-size:4.26cqw;line-height:1.45}
+    .launch-warning::after{content:"";position:absolute;bottom:11.5%;left:45%;width:10%;height:1px;background:#d2cbb8}
+    .launch-progress{position:absolute;top:77.86%;inset-inline:3.7%;font-size:3.33cqw;color:#706858;text-align:left}
+    .launch-progress .bar{height:1.39cqw;background:#e2dece;border-radius:1cqw;overflow:hidden;margin-bottom:2.8cqw}
+    .launch-progress .bar::after{content:"";display:block;width:12%;height:100%;background:#507755;animation:launch-bar 1.3s ease-in-out infinite alternate}
+    .launch-worker,.launch-worker-shadow{position:absolute;left:50%;transform:translate(-50%,-50%)}
+    .launch-worker-shadow{top:74.3%;width:14.81cqw;height:1.85cqw;border-radius:100%;background:#dddac9}
+    .launch-worker{top:67.6%;width:30.56cqw;height:30.56cqw;background:url('assets/resources/loading-worker.png') 0 0/400% 400% no-repeat;animation:launch-worker-x .5s steps(4) infinite,launch-worker-y 2s steps(4) infinite}
+    .launch-rights{position:absolute;inset-inline:5%;bottom:max(3.05cqw,var(--wz-safe-bottom));display:grid;gap:.95cqw;color:#706858;font-size:3.33cqw;text-align:center}
+    @keyframes launch-bar{to{transform:translateX(733.33%)}}
+    @keyframes launch-worker-x{to{background-position-x:133.3333%}}
+    @keyframes launch-worker-y{to{background-position-y:133.3333%}}
+    @media(prefers-reduced-motion:reduce){.launch-worker,.launch-progress .bar::after{animation:none}}
+    #error{display:none;position:absolute;inset:0;padding:28px;white-space:pre-wrap;background:#101c22;z-index:6;color:#dbe8c5;font-size:14px;line-height:1.8}
+    #desktop-note{position:fixed;left:calc(50% + 30vh);bottom:40px;width:175px;font-size:12px;line-height:2;color:#6e8e83;letter-spacing:1px}#desktop-note strong{color:#a9c6a0;font-weight:400}
+    @media(max-width:850px){#desktop-note{display:none}}@media(max-aspect-ratio:9/16){#stage{border-radius:0}}
+  </style>
+</head>
+<body>
+  <main id="stage" aria-label="植物大师vs精英僵尸">
+    <canvas id="GameCanvas" tabindex="0"></canvas>
+    <div id="loading">
+      <div class="launch-copy">
+        <img class="launch-age" id="launch-age" src="assets/resources/cadpa-age-8.png" alt="8+ 适龄提示（CADPA）">
+        <h1 id="launch-title"><img id="launch-logo" alt="" hidden><span id="launch-title-text"></span></h1>
+        <section class="launch-warning" aria-labelledby="launch-warning-title">
+          <h2 id="launch-warning-title">健康游戏忠告</h2>
+          <div id="launch-lines"></div>
+        </section>
+        <div class="launch-worker-shadow" aria-hidden="true"></div>
+        <div class="launch-worker" aria-hidden="true"></div>
+        <div class="launch-progress"><div class="bar"></div><p>正在启动…</p></div>
+      </div>
+      <div class="launch-rights">
+        <p id="launch-holder"></p>
+        <p id="launch-registration"></p>
+      </div>
+    </div>
+    <div id="error"></div>
+  </main>
+  <aside id="desktop-note"><strong id="desktop-title"></strong><br>按住场地，拖动鞭圈催工<br>点击卡片招募和升级<br>上下滑动逛商店，长按卡片看详情<br>从右上角设置查看玩法说明</aside>
+  <script>window.__WZ_START_AT__=Date.now();window.module={exports:{}};window.exports=window.module.exports;window.require=function(){return {configure:function(){}}};</script>
+  <script src="assets/scripts/RuntimeConfig.js?v=0.13.5"></script>
+  <script>
+    (function(){
+      const {gameTitle,version,launchNotice}=window.WZRuntimeConfig;
+      const title=document.getElementById('launch-title-text'),logo=document.getElementById('launch-logo');
+      title.textContent=gameTitle;
+      logo.alt=gameTitle;
+      logo.addEventListener('load',()=>{logo.hidden=false;title.hidden=true;},{once:true});
+      logo.src='assets/resources/loading-logo.png';
+      document.getElementById('desktop-title').textContent=gameTitle+' / '+version;
+      document.getElementById('launch-age').alt=launchNotice.age+' 适龄提示（CADPA）';
+      document.getElementById('launch-holder').textContent='著作权人：'+launchNotice.copyrightHolder;
+      document.getElementById('launch-registration').textContent='软著登记号：'+launchNotice.registrationNumber;
+      const lines=document.getElementById('launch-lines');
+      launchNotice.healthyPlay.forEach(line=>{
+        const p=document.createElement('p');
+        p.textContent=line;
+        lines.appendChild(p);
+      });
+    })();
+  </script>
+  <script src="assets/scripts/Revisit.js?v=0.13.0"></script>
+  <script src="vendor/cocos/cocos2d-js-min.js"></script>
+  <script src="assets/scripts/Data.js?v=0.11.0"></script>
+  <script src="assets/scripts/WalkArea.js?v=0.11.0"></script>
+  <script src="assets/scripts/AdRewards.js?v=0.13.0"></script>
+  <script src="assets/scripts/RewardedAds.js?v=0.13.0"></script>
+  <script src="assets/scripts/SaveStore.js?v=0.13.0"></script>
+  <script src="assets/scripts/Model.js?v=0.13.1"></script>
+  <script src="assets/scripts/Art.js?v=0.13.0"></script>
+  <script src="assets/scripts/VisualData.js?v=0.11.0"></script>
+  <script src="assets/scripts/MinerRig.js?v=0.11.0"></script>
+  <script src="assets/scripts/WorkerRig.js?v=0.11.0"></script>
+  <script src="assets/scripts/FactoryWorkerRig.js?v=0.11.0"></script>
+  <script src="assets/scripts/PartnerEquipment.js?v=0.11.0"></script>
+  <script src="assets/scripts/BuddyRig.js?v=0.11.0"></script>
+  <script src="assets/scripts/InfernalWorkerRig.js?v=0.11.0"></script>
+  <script src="assets/scripts/InfernalPartners.js?v=0.11.0"></script>
+  <script src="assets/scripts/ArtLoader.js?v=0.11.8"></script>
+  <script src="assets/scripts/Visuals.js?v=0.11.8"></script>
+  <script src="assets/scripts/WorkAnimation.js?v=0.11.0"></script>
+  <script src="assets/scripts/WhipMotion.js?v=0.11.0"></script>
+  <script src="assets/scripts/PartnerFeedback.js?v=0.11.0"></script>
+  <script src="assets/scripts/ChapterTransition.js?v=0.11.0"></script>
+  <script src="assets/scripts/ShopScroll.js?v=0.11.0"></script>
+  <script src="assets/scripts/UILayout.js?v=0.13.0"></script>
+  <script src="assets/scripts/Runtime.js?v=0.13.0"></script>
+  <script src="assets/scripts/Game.js?v=0.13.5"></script>
+  <script src="tools/web-boot.js?v=0.13.5"></script>
+</body>
+</html>
